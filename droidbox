@@ -3703,7 +3703,7 @@ case ${CMD} in
 	;;
 esac
 
-if [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
+if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 	$BB rm -f /system/etc/droidbox/.com.jrummy.droidbox
 fi
 
