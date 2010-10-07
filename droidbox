@@ -1,6 +1,7 @@
-#!/system/xbin/bash
+#!/system/bin/sh
 # 
 # droidbox V1.0 by Jared Rummler (JRummy16)
+# see http://github.com/jrummy16/android_system_external_droidbox for the latest droidbox
 # 
 # This script is a compilation of useful functions available for
 # most android devices. For best use symlink the commands in an
@@ -34,6 +35,7 @@ ARG=$@
 DROIDBOX_DIR_EXTERNAL=/sdcard/droidbox
 DROIDBOX_DIR_INTERNAL=/system/etc/droidbox
 BACKUP_DIR=/sdcard/droidbox/MyBackup
+LOG_FILE=/system/etc/droidbox/droidbox.log
 
 # Defaults:
 LOGGING=0	# Logging off by default
@@ -70,13 +72,22 @@ droidBoxUsage()
 
 checkBusybox()
 {
-	if cat /system/xbin/busybox > /dev/nul 2>&1; then
+	if toolbox cat /system/xbin/busybox > /dev/nul 2>&1; then
 		BB=/system/xbin/busybox
-	elif cat /system/bin/busybox > /dev/nul 2>&1; then
+	elif toolbox cat /system/bin/busybox > /dev/nul 2>&1; then
 		BB=/system/bin/busybox
+	elif toolbox cat /data/data/com.jrummy.droidbox/files/busybox > /dev/nul 2>&1; then
+		BB=/data/data/com.jrummy.droidbox/files/busybox
+		toolbox chmod 755 /data/data/com.jrummy.droidbox/files/busybox
 	else
 		echo "Error: Busybox not found!"
 		exit
+	fi
+	
+	# Use droidbox busybox incase user has outdated borked applets
+	if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
+		BB=/data/data/com.jrummy.droidbox/files/busybox
+		toolbox chmod 755 /data/data/com.jrummy.droidbox/files/busybox
 	fi
 }
 
@@ -110,19 +121,21 @@ checkDevice()
 
 promptToReboot()
 {
-	$BB echo ""
-	case $1 in
-		performance)	$BB echo "A reboot is suggested for the best performance for your device."			;;
-		changes)		$BB echo "To see the changes take effect a reboot is required."						;;
-		*)				$BB echo "A reboot is suggested."													;;
-	esac
-	$BB echo -n "Would you like to reboot your device now? (y/n): "
-	read rebootChoice
-	case $rebootChoice in
-		y|Y)	_rb --reboot								;;
-		n|N)												;;
-		*)		$BB echo "Invalid option in $rebootChoice."	;;
-	esac
+	if $BB [ $GUI -eq 0 ]; then
+		$BB echo ""
+		case $1 in
+			performance)	$BB echo "A reboot is suggested for the best performance for your device."			;;
+			changes)		$BB echo "To see the changes take effect a reboot is required."						;;
+			*)				$BB echo "A reboot is suggested."													;;
+		esac
+		$BB echo -n "Would you like to reboot your device now? (y/n): "
+		read rebootChoice
+		case $rebootChoice in
+			y|Y)	_rb --reboot								;;
+			n|N)												;;
+			*)		$BB echo "Invalid option in $rebootChoice."	;;
+		esac
+	fi
 }
 
 taskRuntime()
@@ -165,7 +178,7 @@ _ads()
   # Created by:
   #    Jared Rummler (JRummy16) 
   # Last modified:
-  #    9-21-2010
+  #    10-7-2010
   #
 	HOSTS_URL="http://www.froyoroms.com/files/developers/jrummy/JRummy/Other"
 	
@@ -179,20 +192,32 @@ _ads()
 	getHosts()
 	{
 		$BB mkdir -p $DROIDBOX_DIR_INTERNAL
-		if $BB [ ! -e $DROIDBOX_DIR_INTERNAL/$1 ]; then
+		if $BB [ ! -e $DROIDBOX_DIR_INTERNAL/$1 -a ! -e /data/data/com.jrummy.droidbox/files/$1 ]; then
 			$BB echo -n "Downloading $1 ... "
 			$BB wget -q $HOSTS_URL/$1 -O $DROIDBOX_DIR_INTERNAL/$1
 			$BB echo "done."
 		fi
 	}
 	
+	if $BB [ -e /data/data/com.jrummy.droidbox/files/hosts.local ]; then
+		HOSTS_LOCAL=/data/data/com.jrummy.droidbox/files/hosts.local
+	else
+		HOSTS_LOCAL=$DROIDBOX_DIR_INTERNAL/hosts.local
+	fi
+	if $BB [ -e /data/data/com.jrummy.droidbox/files/hosts.adblock ]; then
+		HOSTS_ADBLOCK=/data/data/com.jrummy.droidbox/files/hosts.adblock
+	else
+		HOSTS_ADBLOCK=$DROIDBOX_DIR_INTERNAL/hosts.adblock
+	fi
+		
+	
 	case $1 in
 		off)
 			getHosts hosts.local
 			getHosts hosts.adblock
 			$BB echo -n "Enabling ad blocking ... "
-			$BB cat $DROIDBOX_DIR_INTERNAL/hosts.local > /system/etc/hosts
-			$BB cat $DROIDBOX_DIR_INTERNAL/hosts.adblock >> /system/etc/hosts
+			$BB cat $HOSTS_LOCAL > /system/etc/hosts
+			$BB cat $HOSTS_ADBLOCK >> /system/etc/hosts
 			$BB echo "done."
 			$BB echo ""
 			$BB echo "Ads have been disabled."
@@ -200,7 +225,7 @@ _ads()
 		on)
 			getHosts hosts.local
 			$BB echo -n "Disabling ad blocking ... "
-			$BB cat $DROIDBOX_DIR_INTERNAL/hosts.local > /system/etc/hosts
+			$BB cat $HOSTS_LOCAL > /system/etc/hosts
 			$BB echo "done."
 			$BB echo ""
 			$BB echo "Ads have been enabled."
@@ -439,7 +464,7 @@ _apploc()
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
-  #    9-9-2010
+  #    10-7-2010
   #
 	_applocUsage()
 	{
@@ -484,7 +509,16 @@ _apploc()
 	
 	case $1 in
 		current)
-			$BB echo "Install Location is currently set to `pm getInstallLocation | $BB cut -c 2-`"
+			CURRENT_LOC=`pm getInstallLocation | $BB sed -e 's/^..//' -e 's/.$//'`
+			if $BB [ $CURRENT_LOC == "auto" ]; then
+				$BB echo "Auto: System will decide where apps will be installed to."
+			elif $BB [ $CURRENT_LOC == "internal" ]; then
+				$BB echo "Internal: Apps will be installed to internal storage."
+			elif $BB [ $CURRENT_LOC == "external" ]; then
+				$BB echo "External: Apps will be installed to sdcard"
+			else
+				$BB echo "Error: could not get current install location."
+			fi
 		;;
 		2sd|--2sdcard)
 			setAppInstallLocation 2
@@ -839,7 +873,8 @@ _compcache()
   # Description:
   #    Toggles compcache ramzswap module on or off
   # Created by:
-  #    Jared Rummler (JRummy16) & Slayer
+  #    Jared Rummler (JRummy16) 
+  #    (Modified from Slayer's script)
   # Last modified:
   #    9-19-2010
   #
@@ -1402,20 +1437,19 @@ _flashrec()
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
-  #    9-13-2010
+  #    10-7-2010
   #
+	RECOVERY_LIST="http://www.froyoroms.com/files/developers/jrummy/JRummy/scripts/recoveries.list"
+	RECOVERY_URL="http://koush.tandtgaming.com/recoveries"
+	
 	FLASH_IMAGE_URL="http://www.froyoroms.com/files/developers/jrummy/JRummy/Other/flash_image"
-	CLOCKWORK_URL="http://koush.tandtgaming.com/recoveries/recovery-clockwork-2.5.0.1-sholes.img"
-	SPRECOVERY_URL="http://downloads.droidmod.org/recovery-0.99.3b.img"
 	
 	_flashrecUsage()
 	{
-		$BB echo "Usage: flashrec [-c|-s]"
+		$BB echo "Usage: flashrec [-c]"
 		$BB echo ""
 		$BB echo "options:"
-		$BB echo "        -c	Flashes ClockWork Recovery."
-		$BB echo "        -s	Flashes SPRecovery."
-
+		$BB echo "       -c	Flashes ClockWork Recovery."
 	}
 	
 	checkFlashImage()
@@ -1424,30 +1458,36 @@ _flashrec()
 			$BB echo "Downloading flash_image binary ... "
 			$BB wget $FLASH_IMAGE_URL -O /system/bin/flash_image
 			$BB chmod 0755 /system/bin/flash_image
-		fi
+		fi		
 	}
 	
 	flashRecovery()
 	{
-		checkDevice sholes return
 		checkFlashImage
-		if $BB [ ! -e /sdcard/goodies/recovery/`$BB basename $1` ]; then
-			$BB echo "Downloading recovery image ... "
-			$BB mkdir -p /sdcard/goodies/recovery
-			$BB wget $1 -O /sdcard/goodies/recovery/`$BB basename $1`
+		
+		# Download a list of available clockwork recovery images:
+		$BB mkdir -p $DROIDBOX_DIR_INTERNAL/recoveries
+		$BB wget -q $RECOVERY_LIST -O $DROIDBOX_DIR_INTERNAL/recoveries/recoveries.list
+		RECOVERY_IMG=$($BB grep -i `getprop ro.product.device` $DROIDBOX_DIR_INTERNAL/recoveries/recoveries.list)
+		
+		if $BB [ ! -e $DROIDBOX_DIR_INTERNAL/recoveries/$RECOVERY_IMG ]; then
+			$BB echo -n "Downloading recovery image ... "
+			# Download the correct recovery image for the device:
+			if $BB [ -z $RECOVERY_IMG ]; then
+				$BB echo "Error: recovery image not found for your device."
+				return
+			fi
+			$BB wget $RECOVERY_URL/$RECOVERY_IMG -O $DROIDBOX_DIR_INTERNAL/recoveries/$RECOVERY_IMG # Thanks koush :)
 		fi
 		
-		$BB echo -n "Flashing `$BB basename $1` ... "
-		flash_image recovery /sdcard/goodies/recovery/`$BB basename $1` > /dev/nul 2>&1
+		$BB echo -n "Flashing $RECOVERY_IMG ... "
+		flash_image recovery $DROIDBOX_DIR_INTERNAL/recoveries/$RECOVERY_IMG > /dev/nul 2>&1
 		$BB echo "done."
 	}
 	
 	case $1 in
 		-c|--clockwork)
 			flashRecovery $CLOCKWORK_URL
-		;;
-		-s|--sprecovery)
-			flashRecovery $SPRECOVERY_URL
 		;;
 		*)
 			_flashrecUsage
@@ -1464,7 +1504,7 @@ _freemem()
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
-  #    9-17-2010
+  #    10-7-2010
   #
 	AT_BOOT=0
 	
@@ -1495,8 +1535,14 @@ _freemem()
 	
 	freeMemory()
 	{
+		INIT_MEMKILLER="write /sys/module/lowmemorykiller/parameters/minfree"
+		
 		if $BB [ $AT_BOOT -eq 1 ]; then
 			$BB mount -o remount,rw -t yaffs2 `$BB grep " /system " "/proc/mounts" | $BB cut -d ' ' -f1` / > /dev/nul 2>&1
+			if $BB [ -z `$BB grep -i $INIT_MEMKILLER init.rc` ]; then
+				$BB echo "Error: Failed to set memkiller at boot."
+				return
+			fi
 			$BB echo -n "Setting $($BB expr $6 \* 4 / 1024)mb of RAM free at boot ... "
 			$BB sed -i -e "s|$INIT_MEMKILLER.*|$INIT_MEMKILLER $1,$2,$3,$4,$5,$6|g" init.rc
 			$BB echo "done"
@@ -1784,7 +1830,7 @@ _load()
 			37|Matrix_DBlue)	loadBootAnimation Matrix_Droid_Blue "http://droidboots.com/http//droidboots.com/downloads/bootanimations/matrix_droid_blue.zip"							;;
 			38|Midnight)		loadBootAnimation Midnight "http://droidboots.com/http//droidboots.com/downloads/bootanimations/midnight.zip"											;;
 			39|Warfare)			loadBootAnimation Modern_Warfare_2 "http://droidboots.com/http//droidboots.com/downloads/bootanimations/mw2_full.zip"									;;
-			40|Warfare2)		loadBootAnimation Moving_Droid_Eye "http://droidboots.com/http//droidboots.com/downloads/bootanimations/movingeye.zip"									;;
+			40|Moving_Eye)		loadBootAnimation Moving_Droid_Eye "http://droidboots.com/http//droidboots.com/downloads/bootanimations/movingeye.zip"									;;
 			41|Multicolor)		loadBootAnimation Multicolor "http://droidboots.com/http//droidboots.com/downloads/bootanimations/Multicolor.zip"										;;
 			42|Radar3ds)		loadBootAnimation Radar3ds_Compilation "http://droidboots.com/http//droidboots.com/downloads/bootanimations/Radar3d.zip"								;;
 			43|Redwings)		loadBootAnimation Redwings "http://droidboots.com/http//droidboots.com/downloads/bootanimations/Redwings.zip"											;;
@@ -2073,7 +2119,7 @@ _load()
 	}
 	
 	# For GUI:
-	if [ -e /system/etc/droidbox/.com.jrummy.droidbox -a ! -z $2 ]; then
+	if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox -a ! -z $2 ]; then
 		NO_MENU=1
 	fi
 	
@@ -2897,7 +2943,7 @@ _setprops()
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
-  #    9-9-2010
+  #    10-7-2010
   #
 	_setpropsUsage()
 	{
@@ -2908,18 +2954,25 @@ _setprops()
 	
 	changePropValue()
 	{
-		OLD_VALUE=`$BB grep -i "$1" /system/build.prop | sed "s|$1||"`
-		$BB echo -n "Changing value of "`$BB echo $1 | sed 's|=||'`" from $OLD_VALUE to $2 ... "
-		$BB mkdir -p /data/local/tmp
-		$BB cp -f /system/build.prop /data/local/tmp
-		$BB sed -i -e "s|$1.*|$1$2|" /data/local/tmp/build.prop
-		if [ `$BB grep -i "$1" /data/local/tmp/build.prop | $BB sed "s|$1||"` == $2 ]; then
-			$BB mv -f /data/local/tmp/build.prop /system/build.prop
-			$BB echo "done."
-			$BB echo ""
+		KEY=`$BB echo $2 | $BB sed 's|=||'`
+
+		# Check if the property exists:
+		if $BB [ -z "`getprop $KEY`" -a -z "`$BB grep $2 $1`" ]; then
+			$BB echo "Error: $KEY not supported by your device"
+			return
+		fi
+
+		# Make a backup of the file if no backup was found
+		$BB mkdir -p $DROIDBOX_DIR_INTERNAL/backup
+		if $BB [ ! -e $DROIDBOX_DIR_INTERNAL/backup/`$BB basename $1` ]; then
+			$BB cp -f $1 $DROIDBOX_DIR_INTERNAL/backup/`$BB basename $1`
+		fi
+
+		# Make the change:
+		$BB sed -i "s|$2.*|$2$3|" $1
+		$BB echo "Set $KEY to $3"
+		if $BB [ $GUI -eq 0 ]; then
 			promptToReboot changes
-		else
-			$BB echo "failed!"
 		fi
 	}
 	
@@ -2945,24 +2998,24 @@ _setprops()
 	vmHeap()
 	{
 		case $heapSizeChoice in
-			1|12m)	changePropValue "dalvik.vm.heapsize=" 12m			;;
-			2|16m)	changePropValue "dalvik.vm.heapsize=" 16m			;;
-			3|24m)	changePropValue "dalvik.vm.heapsize=" 24m			;;
-			4|32m)	changePropValue "dalvik.vm.heapsize=" 32m			;;
+			1|12m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 12m			;;
+			2|16m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 16m			;;
+			3|24m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 24m			;;
+			4|32m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 32m			;;
 			5)															;;
-			*)	$BB echo "Error: Invalid option in $heapSizeChoice"		;;
+			*)		$BB echo "Error: Invalid option in $heapSizeChoice"	;;
 		esac
 	}
 	
 	wifiScan()
 	{
 		case $wifiScanChoice in
-			1|30)	changePropValue "wifi.supplicant_scan_interval = " 30	;;
-			2|45)	changePropValue "wifi.supplicant_scan_interval = " 45	;;
-			3|60)	changePropValue "wifi.supplicant_scan_interval = " 60	;;
-			4|90)	changePropValue "wifi.supplicant_scan_interval = " 90	;;
-			5|120)	changePropValue "wifi.supplicant_scan_interval = " 120	;;
-			6|180)	changePropValue "wifi.supplicant_scan_interval = " 180	;;
+			1|30)	changePropValue /system/build.prop "wifi.supplicant_scan_interval = " 30	;;
+			2|45)	changePropValue /system/build.prop "wifi.supplicant_scan_interval = " 45	;;
+			3|60)	changePropValue /system/build.prop "wifi.supplicant_scan_interval = " 60	;;
+			4|90)	changePropValue /system/build.prop "wifi.supplicant_scan_interval = " 90	;;
+			5|120)	changePropValue /system/build.prop "wifi.supplicant_scan_interval = " 120	;;
+			6|180)	changePropValue /system/build.prop "wifi.supplicant_scan_interval = " 180	;;
 			7)																;;
 			*)		$BB echo "Error: Invalid option in $wifiScanChoice"		;;
 		esac
@@ -2971,40 +3024,99 @@ _setprops()
 	ringDelay()
 	{
 		case $ringDelayChoice in
-			1|2250)	changePropValue "ro.telephony.call_ring.delay=" 2250	;;
-			2|2000)	changePropValue "ro.telephony.call_ring.delay=" 2000	;;
-			3|1500)	changePropValue "ro.telephony.call_ring.delay=" 1500	;;
-			4|1000)	changePropValue "ro.telephony.call_ring.delay=" 1000	;;
-			5|750)	changePropValue "ro.telephony.call_ring.delay=" 750		;;
-			6|3000)	changePropValue "ro.telephony.call_ring.delay=" 3000	;;
+			1|2250)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 2250	;;
+			2|2000)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 2000	;;
+			3|1500)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 1500	;;
+			4|1000)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 1000	;;
+			5|750)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 750		;;
+			6|3000)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 3000	;;
 			7)																;;
 			*)	$BB echo "Error: Invalid option in $ringDelayChoice"		;;
 		esac
 	}
 	
+	maxEvents()
+	{
+		case $maxEventsChoice in
+			1|65) changePropValue /system/build.prop "windowsmgr.max_events_per_sec=" 65 ;;
+			2|60) changePropValue /system/build.prop "windowsmgr.max_events_per_sec=" 60 ;; #default
+			3|55) changePropValue /system/build.prop "windowsmgr.max_events_per_sec=" 55 ;;
+			4|50) changePropValue /system/build.prop "windowsmgr.max_events_per_sec=" 50 ;;
+			5|45) changePropValue /system/build.prop "windowsmgr.max_events_per_sec=" 45 ;;
+			6) ;;
+			*) ;;
+		esac
+	}
+
+	buttonLight()
+	{
+		case $buttonLightChoice in
+			1|off) changePropValue /system/build.prop "ro.mot.buttonlight.timeout=" 1	;; #default
+			2|on|0) changePropValue /system/build.prop "ro.mot.buttonlight.timeout=" 0 ;; # hard key lights stay on while screen is on and not timeout
+			3) 														;;
+			*) $BB echo "Error: Invalid option in $buttonLight"		;;
+		esac
+	}
+
+	proximityDelay()
+	{
+		case $proximityDelayChoice in
+			1|450) changePropValue /system/build.prop "mot.proximity.delay=" 450 				;; #defualt
+			2|400) changePropValue /system/build.prop "mot.proximity.delay=" 400 				;; # BLACK SCREEN PHONE DELAY
+			3|350) changePropValue /system/build.prop "mot.proximity.delay=" 350 				;;
+			4|300) changePropValue /system/build.prop "mot.proximity.delay=" 300 				;;
+			5|250) changePropValue /system/build.prop "mot.proximity.delay=" 250 				;;
+			6|200) changePropValue /system/build.prop "mot.proximity.delay=" 200				;;
+			7|150) changePropValue /system/build.prop "mot.proximity.delay=" 150 				;;
+			8|100) changePropValue /system/build.prop "mot.proximity.delay=" 100 				;;
+			9) 																;;
+			*) $BB echo "Error: Invalid option in $proximityDelayChoice"	;;
+		esac
+	}
+
+
+	bootSound()
+	{
+		case $bootSoundChoice in
+			1|off)		changePropValue /system/build.prop "persist.mot.powerup.tone=/system/media/bootup.ogg" "#persist.mot.powerup.tone=/system/media/bootup.ogg"	;;
+			2|on)		changePropValue /system/build.prop "#persist.mot.powerup.tone=/system/media/bootup.ogg" "persist.mot.powerup.tone=/system/media/bootup.ogg"	;;
+			4)																																		;;
+			*)			$BB echo "Error: Invalid option in $bootSoundChoice"																		;;
+		esac
+	}
+
 	stageFright()
 	{
-		case $stagefrightChoice in
-			1|false)	changePropValue "media.stagefright.enable-player=" false	;;
-			2|true)		changePropValue "media.stagefright.enable-player=" true		;;
-			3)																		;;
-			*)	$BB echo "Error: Invalid option in $stagefrightChoice"				;;
-		esac	
+		case $stageFrightChoice in
+			7|httpoff)		changePropValue /system/build.prop "media.stagefright.enable-http=" false		;;
+			8|httpon)		changePropValue /system/build.prop "media.stagefright.enable-http=" true		;;
+			5|scanoff)		changePropValue /system/build.prop "media.stagefright.enable-scan=" false		;;
+			6|scanon)		changePropValue /system/build.prop "media.stagefright.enable-scan=" true		;;
+			3|metaoff)		changePropValue /system/build.prop "media.stagefright.enable-meta=" false		;;
+			4|metaon)		changePropValue /system/build.prop "media.stagefright.enable-meta=" true		;;
+			1|playeroff)	changePropValue /system/build.prop "media.stagefright.enable-player=" false	;;
+			2|playeron)		changePropValue /system/build.prop "media.stagefright.enable-player=" true		;;
+		esac
 	}
-	
+
 	case $1 in
 		""|-m|--menu)
+			EXIT_SETPROPS=0
 			$BB echo "----------------------------------"
 			$BB echo " 1  Change Dalvik VM Heap Size"
 			$BB echo " 2  Change Wifi Scan Interval"
 			$BB echo " 3  Change Call Ring Delay"
-			$BB echo " 4  Enable/Disable StageFright"
-			$BB echo " 5  Exit this menu"
+			$BB echo " 4  Enable better scrolling speed"
+			$BB echo " 5  Enable hard key lights"
+			$BB echo " 6  Black screen phone delay"
+			$BB echo " 7  Stage Fright Control"
+			$BB echo " 8  Boot sound"
+			$BB echo " 9  Exit this menu"
 			$BB echo "----------------------------------"
 			$BB echo -n "Please choose a number: "
 			read setPropChoice
 			case $setPropChoice in
-				1)	
+				1) 
 					$BB echo "----------------------------------"
 					$BB echo " Your current VM Heap Size is: `getprop dalvik.vm.heapsize`"
 					$BB echo " 1  Set VM Heap Size to 12m"
@@ -3017,7 +3129,7 @@ _setprops()
 					read heapSizeChoice
 					vmHeap
 				;;
-				2)	
+				2) 
 					$BB echo "---------------------------------------------"
 					$BB echo " Your current wifi scan interval is: `getprop wifi.supplicant_scan_interval`"
 					$BB echo " 1  Change wifi scan interval to 30 seconds"
@@ -3032,7 +3144,7 @@ _setprops()
 					read wifiScanChoice
 					wifiScan
 				;;
-				3)	
+				3) 
 					$BB echo "------------------------------"
 					$BB echo " 1  Reduce ring delay by 1/4"
 					$BB echo " 2  Reduce ring delay by 1/3"
@@ -3044,26 +3156,87 @@ _setprops()
 					$BB echo "------------------------------"
 					$BB echo -n "Please choose a number: "
 					read ringDelayChoice
-					ringDelay			
+					ringDelay 
 				;;
-				4)	
-					$BB echo "Stagefright is currently "$(if $BB [ `getprop media.stagefright.enable-player` == "true" ]; then $BB echo "enabled" ; fi ; if $BB [ `getprop media.stagefright.enable-player` == "false" ]; then $BB echo "disabled" ; fi)"."
-					$BB echo "------------------------------"
-					$BB echo " 1  Disable Stagefright"
-					$BB echo " 2  Enable Stagefright"
-					$BB echo " 3  Exit this menu"
-					$BB echo "------------------------------"
+				4) 
+					$BB echo "---------------------------------------------------"
+					$BB echo " ** The lower the value the faster the scrolling speed **"
+					$BB echo " Your current events per second is: `getprop windowsmgr.max_events_per_sec`"
+					$BB echo ""
+					$BB echo " 1  Set max events per second to 65"
+					$BB echo " 2  Set max events per second to 60"
+					$BB echo " 3  Set max events per second to 55"
+					$BB echo " 4  Set max events per second to 50"
+					$BB echo " 5  Set max events per second to 45"  
+					$BB echo "---------------------------------------------------"
 					$BB echo -n "Please choose a number: "
-					read stagefrightChoice
-					stageFright
+					read maxEventsChoice
+					maxEvents
 				;;
 				5)
-
+					$BB echo "--------------------------------------------------------------"
+					$BB echo " Hard key lights are currently "$(if $BB [ `getprop ro.mot.buttonlight.timeout` -eq 0 ]; then echo on ; else echo off ; fi)" while the screen is on"
+					$BB echo ""
+					$BB echo " 1  Enable hard key lights to stay on while the screen is on"
+					$BB echo " 2  Disable hard key lights while the screen is on (default)"
+					$BB echo "--------------------------------------------------------------"
+					$BB echo -n "Please choose a number: "
+					read buttonLightChoice
+					buttonLight
+				;;
+				6)
+					$BB echo "---------------------------------------------"
+					$BB echo " ** The lower the value the shorter the delay **"
+					$BB echo " Your current value is: `getprop mot.proximity.delay`"
+					$BB echo ""
+					$BB echo " 1 Set proximity delay to 450"
+					$BB echo " 2 Set proximity delay to 400"
+					$BB echo " 3 Set proximity delay to 350"
+					$BB echo " 4 Set proximity delay to 300"
+					$BB echo " 5 Set proximity delay to 250"
+					$BB echo " 6 Set proximity delay to 200"
+					$BB echo " 7 Set proximity delay to 150"
+					$BB echo " 8 Set proximity delay to 100"
+					$BB echo "---------------------------------------------"
+					$BB echo -n "Please choose a number: "
+					read proximityDelayChoice
+					proximityDelay
+				;;
+				7)
+					$BB echo "----------------------------"
+					$BB echo " 1  Turn Media HTTP off"
+					$BB echo " 2  Turn Media HTTP on"
+					$BB echo " 3  Turn Media Scan off"
+					$BB echo " 4  Turn Media Scan on"
+					$BB echo " 5  Turn Media Meta off"
+					$BB echo " 6  Turn Media Meta on"
+					$BB echo " 7  Turn Media Player off"
+					$BB echo " 8  Turn Media Player on"
+					$BB echo "----------------------------"
+					$BB echo -n "Please choose a number: "
+					read stageFrightChoice
+					stageFright
+				;;
+				8)
+					$BB echo "----------------------------"
+					$BB echo " 1  Turn boot sound off"
+					$BB echo " 2  Trun boot sound on"
+					$BB echo "----------------------------"
+					$BB echo -n "Please choose a number: "
+					read bootSoundChoice
+					bootSound
+				;;
+				9)
+					EXIT_SETPROPS=1
 				;;
 				*)
 					$BB echo "Error: Invalid option in $setPropChoice"
 				;;
 			esac
+			
+			if $BB [ $EXIT_SETPROPS -eq 0 ]; then
+				$0 # Loop through the options again.
+			fi
 		;;
 		vmheap)
 			heapSizeChoice=$2
@@ -3077,14 +3250,31 @@ _setprops()
 			ringDelayChoice=$2
 			ringDelay
 		;;
+		maxevents)
+			maxEventsChoice=$2
+			maxEvents
+		;;
+		buttonlight)
+			buttonLightChoice=$2
+			buttonLight
+		;;
+		proximity)
+			proximityDelayChoice=$2
+			proximityDelay
+		;;
+		market)
+			marketHackChoice=$2
+			marketHack
+		;;
 		stagefright)
-			stagefrightChoice=$2
+			stageFrightChoice=$2
 			stageFright
 		;;
 		*)
 			_setpropsUsage
 		;;
 	esac
+
 	
 }
 
@@ -3605,7 +3795,6 @@ _zipalign_apks()
  ###--------------------------------
 
 checkBusybox
-checkRoot
 _sysrw > /dev/null
 
 if [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
@@ -3708,4 +3897,3 @@ if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 fi
 
 _sysro > /dev/null
-
