@@ -60,7 +60,7 @@ droidBoxUsage()
 	$BB echo ""
 	$BB echo "Currently defined functions:"
 	$BB echo ""
-	$BB echo "ads, allinone, apploc, bkapps, camsound, compcache,"
+	$BB echo "ads, allinone, apploc, bkapps, cache, camsound, compcache,"
 	$BB echo "chglog, exe, fixperms, flashrec, freemem, install_zip,"
 	$BB echo "load, rb, rmapk, rstapps, setcpu, setprops, slim, sound"
 	$BB echo "switch, symlinkdb, sysrw, sysro, usb, zipalign_apks"
@@ -87,7 +87,7 @@ checkBusybox()
 	# Use droidbox busybox incase user has outdated borked applets
 	if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 		BB=/data/data/com.jrummy.droidbox/files/busybox
-		toolbox chmod 755 /data/data/com.jrummy.droidbox/files/busybox
+		$BB chmod 755 /data/data/com.jrummy.droidbox/files/busybox
 	fi
 }
 
@@ -209,7 +209,6 @@ _ads()
 	else
 		HOSTS_ADBLOCK=$DROIDBOX_DIR_INTERNAL/hosts.adblock
 	fi
-		
 	
 	case $1 in
 		off)
@@ -290,7 +289,8 @@ _allinone()
 		$BB echo " 11  Mount / unmount USB storage"
 		$BB echo " 12  Flash recovery image"
 		$BB echo " 13  Change build properties"
-		$BB echo " 14  Exit this menu"
+		$BB echo " 14  Clean out /data cache"
+		$BB echo " 15  Exit this menu"
 		$BB echo "---------------------------------------"
 		$BB echo -n "Please choose a number: "
 		read scriptChoice
@@ -394,7 +394,10 @@ _allinone()
 				_setprops
 			;;
 			14)
-			
+				_cache --clean
+			;;
+			15)
+
 			;;
 			*)
 				$BB echo "Error: Invalid option in $scriptChoice"
@@ -430,7 +433,7 @@ _allinone()
 	$BB echo " 3    Change Fonts"
 	$BB echo " 4    Add Extra Applications"
 	$BB echo " 5    Remove & Uninstall Applications"
-	$BB echo " 6    Choose Apps2sd Options"
+	$BB echo " 6    Choose Apps to SD Options"
 	$BB echo " 7    Set CPU and Show CPU Info."
 	$BB echo " 8    Backup / Restore data"
 	$BB echo " 9    Run Other Scripts"
@@ -824,6 +827,90 @@ _bkapps()
 	acssiBanner
 }
 
+_cache()
+{
+  #############################################################
+  # Description:
+  #    Clear/backup/restore /data cache files
+  # Created by:
+  #    Jared Rummler (JRummy16)
+  # Last modified:
+  #    10-9-2010
+  #
+	CACHE_BACKUP=$DROIDBOX_DIR_EXTERNAL/cache_backup
+	
+	case $1 in
+		-c|--clean)
+			$BB echo "Cleaning out cache ... "
+			$BB echo ""
+			MEMORY_BEFORE=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
+			
+			CURRENT=1
+			$BB find /data/data -type d -print | $BB grep -i cache | while read d
+			do
+				CACHE_SUM=$($BB find $d -type f | $BB wc -l)
+				$BB find $d -type f -print | while read i
+				do
+					$BB echo -n "($CURRENT of $CACHE_SUM) Removing $($BB basename $i) ... "
+					$BB rm -f $i
+					$BB echo "done."
+					CURRENT=$($BB expr $CURRENT + 1)
+				done
+			done
+			
+			MEMORY_AFTER=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
+			$BB echo ""
+			$BB echo "Freed $($BB expr $MEMORY_AFTER - $MEMORY_BEFORE) kb"
+		;;
+		-b|--backup)
+			sdCheck
+			$BB echo "Backing up cache ... "
+			$BB echo ""
+			
+			$BB mkdir -p $CACHE_BACKUP
+			
+			CURRENT=1
+			$BB find /data/data -type d -print | $BB grep -i cache | while read d
+			do
+				CACHE_SUM=$($BB find $d -type f | $BB wc -l)
+				$BB find $d -type f -print | while read i
+				do
+					$BB echo -n "($CURRENT of $CACHE_SUM) Backing up $($BB basename $i) ... "
+					$BB echo $i >> $CACHE_BACKUP/cache.list
+					$BB cp -f $i $CACHE_BACKUP
+					$BB echo "done"
+					CURRENT=$($BB expr $CURRENT + 1)
+				done
+			done
+		;;
+		-r|--restore)
+			sdCheck
+			$BB echo "Restoring cache ... "
+			$BB echo ""
+			CURRENT=1
+			CACHE_SUM=$($BB cat $CACHE_BACKUP/cache.list | $BB wc -l)
+			for i in $($BB cat $CACHE_BACKUP/cache.list)
+			do
+				if $BB [ -e $CACHE_BACKUP/$($BB basename $i) ]; then
+					$BB echo -n "($CURRENT of $CACHE_SUM) Restoring $($BB basename $i) ... "
+					$BB mkdir -p $($BB dirname $i)
+					$BB cp -f $CACHE_BACKUP/$($BB basename $i) $i
+					$BB echo "done."
+					CURRENT=$($BB expr $CURRENT + 1)
+				fi
+			done
+		;;
+		*)
+			$BB echo "Usage: cache [-c|-b|-r]"
+			$BB echo ""
+			$BB echo "Options:"
+			$BB echo "    -c    Clean out /data cache"
+			$BB echo "    -b    Back up /data cache files"
+			$BB echo "    -r    Restore /data cache files"
+		;;
+	esac
+	
+	
 _camsound()
 {
   #############################################################
@@ -2958,7 +3045,7 @@ _setprops()
 
 		# Check if the property exists:
 		if $BB [ -z "`getprop $KEY`" -a -z "`$BB grep $2 $1`" ]; then
-			$BB echo "Error: $KEY not supported by your device"
+			$BB echo "Error: build property not supported for your device"
 			return
 		fi
 
@@ -2999,11 +3086,15 @@ _setprops()
 	{
 		case $heapSizeChoice in
 			1|12m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 12m			;;
+			14m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 14m			;;
 			2|16m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 16m			;;
+			20m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 20m			;;
 			3|24m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 24m			;;
+			30m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 30m			;;
 			4|32m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 32m			;;
-			5)															;;
-			*)		$BB echo "Error: Invalid option in $heapSizeChoice"	;;
+			36m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 36m			;;
+			5)																				;;
+			*)		$BB echo "Error: Invalid option in $heapSizeChoice"						;;
 		esac
 	}
 	
@@ -3050,27 +3141,29 @@ _setprops()
 
 	buttonLight()
 	{
+	  # hard key lights stay on while screen is on and not timeout
 		case $buttonLightChoice in
 			1|off) changePropValue /system/build.prop "ro.mot.buttonlight.timeout=" 1	;; #default
-			2|on|0) changePropValue /system/build.prop "ro.mot.buttonlight.timeout=" 0 ;; # hard key lights stay on while screen is on and not timeout
-			3) 														;;
-			*) $BB echo "Error: Invalid option in $buttonLight"		;;
+			2|on|0) changePropValue /system/build.prop "ro.mot.buttonlight.timeout=" 0	;; 
+			3) 																			;;
+			*) $BB echo "Error: Invalid option in $buttonLight"							;;
 		esac
 	}
 
 	proximityDelay()
 	{
+	  # Black screen phone delay
 		case $proximityDelayChoice in
 			1|450) changePropValue /system/build.prop "mot.proximity.delay=" 450 				;; #defualt
-			2|400) changePropValue /system/build.prop "mot.proximity.delay=" 400 				;; # BLACK SCREEN PHONE DELAY
+			2|400) changePropValue /system/build.prop "mot.proximity.delay=" 400 				;; 
 			3|350) changePropValue /system/build.prop "mot.proximity.delay=" 350 				;;
 			4|300) changePropValue /system/build.prop "mot.proximity.delay=" 300 				;;
 			5|250) changePropValue /system/build.prop "mot.proximity.delay=" 250 				;;
 			6|200) changePropValue /system/build.prop "mot.proximity.delay=" 200				;;
 			7|150) changePropValue /system/build.prop "mot.proximity.delay=" 150 				;;
 			8|100) changePropValue /system/build.prop "mot.proximity.delay=" 100 				;;
-			9) 																;;
-			*) $BB echo "Error: Invalid option in $proximityDelayChoice"	;;
+			9) 																					;;
+			*) $BB echo "Error: Invalid option in $proximityDelayChoice"						;;
 		esac
 	}
 
@@ -3262,13 +3355,21 @@ _setprops()
 			proximityDelayChoice=$2
 			proximityDelay
 		;;
-		market)
-			marketHackChoice=$2
-			marketHack
+		bootsound)
+			bootSoundChoice=$2
+			bootSound
 		;;
 		stagefright)
 			stageFrightChoice=$2
 			stageFright
+		;;
+		getprops)
+			GETPROP_VALUE=$($BB cat $2 | $BB grep -i $3 | $BB sed "s|$3||")
+			if $BB [ -z "$GETPROP_VALUE" ]; then
+				$BB echo "Error: could not get prop value."
+			else
+				$BB echo $GETPROP_VALUE
+			fi
 		;;
 		*)
 			_setpropsUsage
@@ -3561,7 +3662,7 @@ _symlinkdb()
 	$BB echo "symlinking droidbox functions ..."
 	$BB echo ""
 	
-	for script in ads allinone apploc bkapps camsounds compcache chglog exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch sysrw sysro usb zipalign_apks
+	for script in ads allinone apploc bkapps cache camsounds compcache chglog exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch sysrw sysro usb zipalign_apks
 	do
 		if $BB [ -e /system/xbin/$script ]; then
 			$BB rm -f /system/xbin/$script
@@ -3570,9 +3671,6 @@ _symlinkdb()
 		$BB ln -s $0 /system/xbin/$script
 		$BB echo "done."
 	done
-	
-	$BB mkdir -p $DROIDBOX_DIR_INTERNAL
-	$BB touch $DROIDBOX_DIR_INTERNAL/.droidbox.symlink
 }
 
 _sysro()
@@ -3818,6 +3916,9 @@ case ${CMD} in
 	;;
 	bkapps)
 		_bkapps ${ARG}
+	;;
+	cache)
+		_cache ${ARG}
 	;;
 	camsound)
 		_camsound ${ARG}
