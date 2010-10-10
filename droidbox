@@ -889,6 +889,10 @@ _cache()
 			$BB echo ""
 			CURRENT=1
 			CACHE_SUM=$($BB cat $CACHE_BACKUP/cache.list | $BB wc -l)
+			if $BB [ ! -e $CACHE_BACKUP/cache.list ]; then
+				$BB echo "Error: no backup found."
+				return
+			fi
 			for i in $($BB cat $CACHE_BACKUP/cache.list)
 			do
 				if $BB [ -e $CACHE_BACKUP/$($BB basename $i) ]; then
@@ -909,8 +913,8 @@ _cache()
 			$BB echo "    -r    Restore /data cache files"
 		;;
 	esac
-	
-	
+}
+
 _camsound()
 {
   #############################################################
