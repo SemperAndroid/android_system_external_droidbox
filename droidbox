@@ -63,7 +63,7 @@ droidBoxUsage()
 	$BB echo "ads, allinone, apploc, bkapps, cache, camsound, clean,"
 	$BB echo "compcache, chglog, donate, exe, fixperms, flashrec,"
 	$BB echo "freemem, install_zip, load, rb, rmapk, rstapps, setcpu,"
-	$BB echo "setlinks, setprops, slim, soundswitch, sysrw, sysro,"
+	$BB echo "setprops, slim, soundswitch, symlink, sysrw, sysro,"
 	$BB echo "usb, zipalign_apks"
 	$BB echo ""
 	$BB echo "To see options for specific commands use:"
@@ -3687,7 +3687,7 @@ _switch()
 	esac
 }
 
-_setlinks()
+_symlink()
 {
   #############################################################
   # Description:
@@ -3699,7 +3699,7 @@ _setlinks()
   #
 	_linkdroidboxUsage()
 	{
-		$BB echo "Usage: link [-db|-bb]"
+		$BB echo "Usage: symlink [-db|-bb]"
 		$BB echo ""
 		$BB echo "options:"
 		$BB echo "      -db | droidbox    symlinks droidbox functions"
@@ -3711,13 +3711,13 @@ _setlinks()
 		$BB echo "symlinking droidbox functions ..."
 		$BB echo ""
 		
-		for script in ads allinone apploc bkapps cache camsounds clean compcache chglog donate exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setlinks setprops slim sound switch sysro sysrw usb zipalign_apks
+		for script in ads allinone apploc bkapps cache camsounds clean compcache chglog donate exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch symlink sysro sysrw usb zipalign_apks
 		do
 			if $BB [ -h /system/xbin/$script ]; then
 				$BB rm -f /system/xbin/$script
 			fi
 			$BB echo -n "Symlinking: $script ... "
-			$BB ln -s $0 /system/xbin/$script
+			$BB ln -s /system/xbin/$SCRIPT_NAME /system/xbin/$script
 			$BB echo "done."
 		done
 	}
@@ -4017,7 +4017,7 @@ _zipalign_apks()
 checkBusybox
 _sysrw > /dev/null
 
-if [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
+if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 	GUI=1
 fi
 
@@ -4087,9 +4087,6 @@ case ${CMD} in
 	setcpu)
 		_setcpu ${ARG}
 	;;
-	setlinks)
-		_setlinks ${ARG}
-	;;
 	setprops)
 		_setprops ${ARG}
 	;;
@@ -4101,6 +4098,9 @@ case ${CMD} in
 	;;
 	switch)
 		_switch ${ARG}
+	;;
+	symlink)
+		_symlink ${ARG}
 	;;
 	sysro)
 		_sysro ${ARG}
