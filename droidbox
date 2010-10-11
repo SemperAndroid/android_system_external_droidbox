@@ -23,18 +23,18 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 # 
 
-##--------------------------------------------------------------------------------------------
-##--- Variables:
-##--------------------------------------------------------------------------------------------
+##============================================================================================
+#=== Variables:
+##============================================================================================
 
 SCRIPT_NAME=droidbox
 CMD=$($BB basename $0)
 ARG=$@
 
 # Directories:
-DROIDBOX_DIR_EXTERNAL=/sdcard/droidbox
+DROIDBOX_DIR_EXTERNAL=/mnt/sdcard/droidbox
 DROIDBOX_DIR_INTERNAL=/system/etc/droidbox
-BACKUP_DIR=/sdcard/droidbox/MyBackup
+BACKUP_DIR=/mnt/sdcard/droidbox/MyBackup
 LOG_FILE=/system/etc/droidbox/droidbox.log
 
 # Defaults:
@@ -45,29 +45,43 @@ REBOOT=1
 PROMPTREMOVE=1
 GUI=0
 
-##--------------------------------------------------------------------------------------------
-##--- Functions:
-##--------------------------------------------------------------------------------------------
+##============================================================================================
+#=== Functions:
+##============================================================================================
 
 droidBoxUsage()
 {
-	$BB echo "DroidBox v1.0"
+	$BB echo "$SCRIPT_NAME v1.0"
 	$BB echo "Created by: Jared Rummler (JRummy16)"
 	$BB echo ""
 	$BB echo "Usage: $SCRIPT_NAME [function] [arguments]..."
 	$BB echo "   or: function [arguments]..."
-	$BB echo "         (Assuming droidbox is symlinked)"
+	$BB echo "         (Assuming $SCRIPT_NAME is symlinked)"
 	$BB echo ""
 	$BB echo "Currently defined functions:"
 	$BB echo ""
-	$BB echo "ads, allinone, apploc, bkapps, cache, camsound, compcache,"
-	$BB echo "chglog, donate, exe, fixperms, flashrec, freemem, install_zip,"
-	$BB echo "load, rb, rmapk, rstapps, setcpu, setprops, slim, sound"
-	$BB echo "switch, symlinkdb, sysrw, sysro, usb, zipalign_apks"
+	$BB echo "ads, allinone, apploc, bkapps, cache, camsound, clean,"
+	$BB echo "compcache, chglog, donate, exe, fixperms, flashrec,"
+	$BB echo "freemem, install_zip, load, rb, rmapk, rstapps, setcpu,"
+	$BB echo "setlinks, setprops, slim, soundswitch, sysrw, sysro,"
+	$BB echo "usb, zipalign_apks"
 	$BB echo ""
 	$BB echo "To see options for specific commands use:"
 	$BB echo "       $SCRIPT_NAME [command] -help"
 	$BB echo "   or: [command] -help (if symlinked)"
+}
+
+allInOneLoop()
+{
+	if $BB [ $ALLINONE -eq 1 ]; then
+		if $BB [ `$BB basename $0` == "$SCRIPT_NAME" ]; then
+			$BB sleep $1
+			`$BB basename $0` allinone
+		else
+			$BB sleep $1
+			$0
+		fi
+	fi
 }
 
 checkBusybox()
@@ -91,6 +105,15 @@ checkBusybox()
 	fi
 }
 
+checkDevice()
+{
+  # For functions that are device specific:
+	if $BB [ `getprop ro.build.product` != "$1" -o `getprop ro.product.device` != "$1" ]; then
+		$BB echo "Your device is not supported for this script."
+		$2
+	fi
+}
+
 checkRoot()
 {
 	if $BB [ `$BB whoami` != "root" ]; then
@@ -111,11 +134,12 @@ checkSd()
 	fi
 }
 
-checkDevice()
+printMsg()
 {
-	if $BB [ `getprop ro.build.product` != "$1" -o `getprop ro.product.device` != "$1" ]; then
-		$BB echo "Your device is not supported for this script."
-		$2
+	if $BB [ $LOGGING -eq 1 ]; then
+		$BB echo "$1" "$2" | $BB tee -a $LOG_FILE
+	else
+		$BB echo "$1" "$2"
 	fi
 }
 
@@ -146,28 +170,6 @@ taskRuntime()
 	MINS=`$BB expr $REMAINDER / 60`
 	SECS=`$BB expr $REMAINDER % 60`
 	$BB printf "%02d:%02d:%02d\n" "$HOURS" "$MINS" "$SECS"
-}
-
-printMsg()
-{
-	if $BB [ $LOGGING -eq 1 ]; then
-		$BB echo $1 $2 | $BB tee -a $LOG_FILE
-	else
-		$BB echo $1 $2
-	fi
-}
-
-allInOneLoop()
-{
-	if $BB [ $ALLINONE -eq 1 ]; then
-		if $BB [ `$BB basename $0` == "$SCRIPT_NAME" ]; then
-			$BB sleep $1
-			`$BB basename $0` allinone
-		else
-			$BB sleep $1
-			$0
-		fi
-	fi
 }
 
 _ads()
@@ -253,16 +255,16 @@ _allinone()
 		$BB echo "Usage: allinone"
 		$BB echo ""
 		$BB echo "Displays a user friendly menu to run"
-		$BB echo "commonly used droidbox scripts."
+		$BB echo "$SCRIPT_NAME functions."
 	}
 	
 	backupAndRestoreMenu()
 	{
-		$BB echo "-------------------------------------------------"
+		$BB echo "=============================="
 		$BB echo " 1  Go to backup options"
 		$BB echo " 2  Go to restore options"
 		$BB echo " 3  Exit this menu"
-		$BB echo "-------------------------------------------------"
+		$BB echo "=============================="
 		$BB echo -n "Please choose a number: "
 		read backupAndRestoreChoice
 		case $backupAndRestoreChoice in
@@ -275,7 +277,7 @@ _allinone()
 
 	allInOneOtherScripts()
 	{
-		$BB echo "---------------------------------------"
+		$BB echo "=========================================="
 		$BB echo " 1   Zipalign apks"
 		$BB echo " 2   Block Ads"
 		$BB echo " 3   Show Ads"
@@ -287,125 +289,34 @@ _allinone()
 		$BB echo " 9   Switch live wallpapers"
 		$BB echo " 10  View Changelog"
 		$BB echo " 11  Mount / unmount USB storage"
-		$BB echo " 12  Flash recovery image"
+		$BB echo " 12  Flash clockwork recovery image"
 		$BB echo " 13  Change build properties"
 		$BB echo " 14  Clean out /data cache"
-		$BB echo " 15  Donate to JRummy16 :)"
-		$BB echo " 16  Exit this menu"
-		$BB echo "---------------------------------------"
+		$BB echo " 15  Clear market search history"
+		$BB echo " 16  Donate to JRummy16 :)"
+		$BB echo " 17  Exit this menu"
+		$BB echo "=========================================="
 		$BB echo -n "Please choose a number: "
 		read scriptChoice
 		case $scriptChoice in
-			1)
-				$BB echo "--------------------------------------------"
-				$BB echo " 1  Zipalign all apks in /system and /data"
-				$BB echo " 2  Enter directory to zipalign apks in"
-				$BB echo " 3  Exit this menu"
-				$BB echo "---------------------------------------"
-				$BB echo -n "Please choose a number: "
-				read zipalignChoice
-				case $zipalignChoice in
-					1)
-						_zipalign_apks --all
-					;;
-					2)
-						$BB echo "--------------------------------------------------"
-						$BB echo " Please choose a destination to ZipAlign apks"
-						$BB echo " Example 1: /sdcard/my_apps"
-						$BB echo " Example 2: /system/app"
-						$BB echo "--------------------------------------------------"
-						$BB echo -n "Please enter path to apks: "
-						read zipchoice
-						_zipalign_apks "$zipchoice"
-					;;
-					3)
-					
-					;;
-					*)
-						$BB echo "Error: Invalid option in $zipalignChoice"
-					;;
-				esac
-			;;
-			2)
-				_ads off
-			;;
-			3)
-				_ads on
-			;;
-			4)
-				_camsound off
-			;;
-			5)
-				_camsound on
-			;;
-			6)
-				$BB echo "----------------------------------"
-				$BB echo " 1  Free 50MB of Internal Memory"
-				$BB echo " 2  Free 75MB of Internal Memory"
-				$BB echo " 3  Free 100MB of Internal Memory"
-				$BB echo " 4  Default Internal Memory (25mb)"
-				$BB echo " 5  Exit this menu"
-				$BB echo "----------------------------------"
-				$BB echo -n "Please choose a number: "
-				read freeMemChoice
-				case $freeMemChoice in
-					1)	_freemem 50mb										;;
-					2)	_freemem 75mb										;;
-					3)	_freemem 100mb										;;
-					4)	_freemem default									;;
-					5)														;;
-					*)	$BB echo "Error: Invalid option in $freeMemChoice"	;;
-				esac
-			;;
-			7)
-				_fixperms
-			;;
-			8)
-				_switch ba
-			;;
-			9)
-				_switch lwp
-			;;
-			10)
-				_chglog
-			;;
-			11)
-				if $BB [ -z "$($BB mount | $BB grep /sdcard)" ]; then
-					_usb -d
-				else
-					_usb -e
-				fi
-			;;
-			12)
-				$BB echo "----------------------------------"
-				$BB echo " 1  Flash SPRecovery"
-				$BB echo " 2  Flash ClockWork Recovery"
-				$BB echo " 3  Exit this menu"
-				$BB echo "----------------------------------"
-				$BB echo -n "Please choose a number: "
-				read flashRecChoice
-				case $flashRecChoice in
-					1)	_flashrec -c										;;
-					2)	_flashrec -s										;;
-					3)														;;
-					*)	$BB echo "Error: Invalid option in $flashRecChoice"	;;
-				esac
-			;;
-			13)
-				_setprops
-			;;
-			14)
-				_cache --clean
-			;;
-			15)
-				_donate
-			;;
-			16)
-			
-			;;
-			*)
-				$BB echo "Error: Invalid option in $scriptChoice"
-			;;
+			1)	_zipalign_apks --menu								;;
+			2)	_ads off											;;
+			3)	_ads on												;;
+			4)	_camsound off										;;
+			5)	_camsound on										;;
+			6)	_freemem --menu										;;
+			7)	_fixperms											;;
+			8)	_switch ba											;;
+			9)	_switch lwp											;;
+			10)	_chglog												;;
+			11)	_usb												;;
+			12)	_flashrec -c										;;
+			13)	_setprops											;;
+			14)	_cache --menu										;;
+			15)	_clean market										;;
+			16)	_donate												;;
+			17)														;;
+			*)	$BB echo "Error: Invalid option in $scriptChoice"	;;
 		esac
 	}
 	
@@ -413,7 +324,7 @@ _allinone()
 	{
 		if $BB [ $BANNER -eq 1 ]; then
 			$BB echo ""
-			$BB echo "-------------------------------------------------"
+			$BB echo "================================================="
 			$BB echo "     ___   ____      ____         ____"
 			$BB echo "    / _ | / / /____ /  _/___ ____/ __ \___ ___"
 			$BB echo "   / __ |/ / //___/_/ / / _ |___/ /_/ / _ | -_)"
@@ -430,7 +341,7 @@ _allinone()
 	checkSd
 	allInOneBanner
 	
-	$BB echo "-------------------------------------------------"
+	$BB echo "================================================="
 	$BB echo " Choose between: 1, 2, 3, 4, 5, 6, 7, 8, 9 & 10"
 	$BB echo " 1    Change Boot Animation"
 	$BB echo " 2    Change Live Wallpaper"
@@ -442,7 +353,7 @@ _allinone()
 	$BB echo " 8    Backup / Restore data"
 	$BB echo " 9    Run Other Scripts"
 	$BB echo " 10   Exit This Script"
-	$BB echo "-------------------------------------------------"
+	$BB echo "================================================="
 	$BB echo -n "Please choose a number: "
 	read allInOneChoice
 	case $allInOneChoice in
@@ -455,7 +366,7 @@ _allinone()
 		7)	_setcpu												;;
 		8)	backupAndRestoreMenu								;;
 		9)	allInOneOtherScripts								;;
-		10)	exit												;;
+		10)	exit $?												;;
 		*)	$BB echo "Error: Invalid option in $allInOneChoice"	;;
 	esac
 	
@@ -496,13 +407,13 @@ _apploc()
 	
 	appLocationMenu()
 	{
-		$BB echo "---------------------------------------------------------"
+		$BB echo "=========================================================="
 		$BB echo " Your current install location is: `pm getInstallLocation | $BB cut -c 2-`"
 		$BB echo " 1  [external]: Install on external storage (sdcard)."
 		$BB echo " 2  [internal]: Install on internal device storage."
 		$BB echo " 3  [auto]: Let system decide the best location."
 		$BB echo " 4  Exit this menu"
-		$BB echo "---------------------------------------------------------"
+		$BB echo "=========================================================="
 		$BB echo -n "Please choose a number: "
 		read locationChoice
 		case $locationChoice in
@@ -727,13 +638,13 @@ _bkapps()
 	backupAllInOneMenu()
 	{
 		if $BB [ $ALLINONE -eq 1 ]; then
-			$BB echo "-------------------------------------------------"
+			$BB echo "============================================="
 			$BB echo " 1  Backup all applications and their data"
 			$BB echo " 2  Backup all applications (no data)"
 			$BB echo " 3  Perform a complete backup"
 			$BB echo " 4  Backup wifi, home setup and accounts"
 			$BB echo " 5  Exit this menu"
-			$BB echo "-------------------------------------------------"
+			$BB echo "============================================="
 			$BB echo -n "Please choose a number: "
 			read backupChoice
 			case $backupChoice in
@@ -835,12 +746,45 @@ _cache()
 {
   #############################################################
   # Description:
-  #    Clear or symlinks /data cache directories
+  #    Clears or symlinks /data cache directories
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
   #    10-9-2010
   #
+	cacheMenu()
+	{
+		$BB echo "======================================="
+		$BB echo " 1  Clear all sdcard & data cache"
+		$BB echo " 2  Clear all data cache"
+		$BB echo " 3  Clear all sdcard cache"
+		$BB echo " 4  Move all cache to sdcard"
+		$BB echo " 5  Move cache back to data"
+		$BB echo " 6  Move browser cache to sdcard"
+		$BB echo " 7  Move Maps cache to sdcard"
+		$BB echo " 8  Move Street View cache to sdcard"
+		$BB echo " 9  Move Market cache to sdcard"
+		$BB echo " 10 Move Gmail cache to sdcard"
+		$BB echo " 11 Exit this menu"
+		$BB echo "======================================="
+		$BB echo -n "Please choose a number: "
+		read cacheChoice
+		case $cacheChoice in
+			1)	_cache -rmall										;;
+			2)	_cache -rmdata										;;
+			3)	_cache -rmsd										;;
+			4)	_cache -mvsd										;;
+			5)	_cache -mvdata										;;
+			6)	_cache -mvbrow										;;
+			7)	_cache -mvmaps										;;
+			8)	_cache -mvstreet									;;
+			9)	_cache -mvvend										;;
+			10)	_cache -mvgmail										;;
+			11)														;;
+			*)	$BB echo "Error: Invalid option in $cacheChoice"	;;
+		esac
+	}
+	
 	clearCache()
 	{
 		MEMORY_BEFORE=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
@@ -888,6 +832,7 @@ _cache()
 		
 		$BB echo "Moving cache to SD card ... "
 		$BB echo ""
+		$BB mkdir -p /mnt/sdcard/data_cache
 		
 		$BB find $1 -type d -iname cache -print | while read d
 		do
@@ -926,6 +871,9 @@ _cache()
 	}
 	
 	case $1 in
+		-m|--menu)
+			cacheMenu
+		;;
 		-rmall|remove_all)
 			clearCache "/data/data /mnt/sdcard"
 		;;
@@ -961,6 +909,7 @@ _cache()
 			$BB echo "              -mvmaps|-mvstreet|-mvvend|-mvgmail]"
 			$BB echo ""
 			$BB echo "options:"
+			$BB echo "    --menu       Prints menu with options"
 			$BB echo "    -rmall       Clear out all cache in /data & /sdcard"
 			$BB echo "    -rmsd        Clear out all cache in /sdcard"
 			$BB echo "    -rmdata      Clear out all cache in /data"
@@ -1017,7 +966,7 @@ _camsound()
 	esac
 }
 
-_clear()
+_clean()
 {
   #############################################################
   # Description:
@@ -1034,7 +983,7 @@ _clear()
 			$BB echo "done."
 		;;
 		*)
-			$BB echo "usage: clear market"
+			$BB echo "usage: clean market"
 			$BB echo ""
 			$BB echo "Clears market search history"
 		;;
@@ -1130,14 +1079,15 @@ _chglog()
 
 _donate()
 {
-  # Donate to the developer :-p
+  # Donate to the developer :)
   # 
 	if $BB [ $# -gt 0 ]; then
-		$BB echo "Usage: Donate to the developer of droidbox (JRummy16)"
+		$BB echo "Usage: Donate to the developer of $SCRIPT_NAME (JRummy16)"
 		$BB echo "       Donations are appreciated :)"
 	fi
 	
-	am start -a android.intent.action.VIEW -d http://bit.ly/dzbPGd
+	$BB echo "Connecting to paypal ..."
+	am start -a android.intent.action.VIEW -d http://bit.ly/dzbPGd > /dev/null
 }
 
 _exe()
@@ -1152,7 +1102,7 @@ _exe()
   #
 	_exeUsage()
 	{
-		$BB echo "usage: exe <path to file> <file name>"
+		$BB echo "usage: exe <path to file> or <file name>"
 		$BB echo ""
 		$BB echo "Makes any file executable. You may either enter"
 		$BB echo "the full path to the file or the file name."
@@ -1164,8 +1114,8 @@ _exe()
 	elif $BB [ -e $1 ]; then
 		$BB chmod 0755 $1
 		$BB echo "$1 is now executable."
-	elif $BB [ ! -z "`$BB find /system /data /sdcard -iname $1 -type f`" ]; then	# make all files which match the given name executable.
-		$BB find /system /data /sdcard -type f -iname $1 -print | while read f
+	elif $BB [ ! -z "`$BB find /system /data /mnt/sdcard -iname $1 -type f`" ]; then	# make all files which match the given name executable.
+		$BB find /system /data /mnt/sdcard -type f -iname $1 -print | while read f
 		do
 			$BB chmod 0755 $f
 			$BB echo "$f is now executable."
@@ -1330,7 +1280,7 @@ _fixperms()
 		if $BB test $( $BB mount | $BB grep -c /sdcard ) -eq 0; then
 			LOG_FILE="/data/fix_permissions.log"
 		else
-			LOG_FILE="/sdcard/fix_permissions.log"
+			LOG_FILE="/mnt/sdcard/fix_permissions.log"
 		fi
 		if $BB test ! -e "$LOG_FILE"; then
 			> $LOG_FILE
@@ -1594,7 +1544,7 @@ _fixperms()
 	
 	# MAIN SCRIPT:
 	
-	if $BB [ $GUI -eq 1 ]; then
+	if $BB [ $GUI -eq 1 ]; then	# toast message
 		$BB echo "Fixing permissions ... "
 		$BB echo ""
 	fi
@@ -1823,7 +1773,7 @@ _install_zip()
 				$BB wget $UPDATE_PACKAGE -O $DROIDBOX_DIR_EXTERNAL/files/`$BB basename $UPDATE_PACKAGE`
 				$BB echo -n "Preparing for install ... "
 				$BB mkdir -p /cache/recovery
-				$BB echo "install_zip SDCARD:"`$BB echo "$DROIDBOX_DIR_EXTERNAL/files/$( $BB basename $UPDATE_PACKAGE)" | $BB sed 's|/sdcard/||'`"" >> /cache/recovery/extendedcommand
+				$BB echo "install_zip SDCARD:"`$BB echo "$DROIDBOX_DIR_EXTERNAL/files/$( $BB basename $UPDATE_PACKAGE)" | $BB sed 's|.*/sdcard/||'`"" >> /cache/recovery/extendedcommand
 				$BB echo "done."
 				$BB echo ""
 				$BB echo "Rebooting into recovery to apply update package ... "
@@ -1859,7 +1809,7 @@ _install_zip()
 			if $BB [ -e $1 ]; then
 				UPDATE_PACKAGE="$1"
 			# check for matching file name:
-			elif $BB [ ! -z "`$BB find /sdcard -iname $1 -type f`" ] && [ `$BB find /sdcard -iname $1 -type f | $BB wc -l` -eq 1 ]; then
+			elif $BB [ ! -z "`$BB find /mnt/sdcard -iname $1 -type f`" ] && [ `$BB find /mnt/sdcard -iname $1 -type f | $BB wc -l` -eq 1 ]; then
 				UPDATE_PACKAGE=$( $BB find / -iname $1 -type f )
 			else
 				$BB echo "Error: $1 not found."
@@ -1874,7 +1824,7 @@ _install_zip()
 					$BB echo 
 					$BB echo "Preparing to install $UPDATE_PACKAGE ... "
 					$BB mkdir -p /cache/recovery
-					$BB echo "install_zip SDCARD:"`$BB echo $UPDATE_PACKAGE | $BB sed 's|/sdcard/||'`"" >> /cache/recovery/extendedcommand
+					$BB echo "install_zip SDCARD:"`$BB echo $UPDATE_PACKAGE | $BB sed 's|.*/sdcard/||'`"" >> /cache/recovery/extendedcommand
 					$BB echo "done."
 					$BB echo ""
 					$BB echo "Rebooting into recovery to install $UPDATE_PACKAGE ... "
@@ -1921,7 +1871,7 @@ _load()
 	
 	installBootAnimations()
 	{
-		BOOTANIMATION_DIR=/sdcard/goodies/bootanimations
+		BOOTANIMATION_DIR=$DROIDBOX_DIR_EXTERNAL/goodies/bootanimations
 		
 		loadBootAnimation()
 		{
@@ -1940,7 +1890,7 @@ _load()
 		}
 		
 		if $BB [ $NO_MENU -eq 0 ]; then
-			$BB echo "----------------------------------------------------------"
+			$BB echo "=========================================================="
 			$BB echo "1   Banana                  29  Galaxy"
 			$BB echo "2   Blood                   30  GundamMech"
 			$BB echo "3   Cyanogen by Prash       31  Halo 3 Logo"
@@ -1969,7 +1919,7 @@ _load()
 			$BB echo "26  DroidMod                54  Windows 7 Nexus"
 			$BB echo "27  Eyes                    55  Yellow Boot"
 			$BB echo "28  Eyes Fullscreen         56  Exit this menu."
-			$BB echo "----------------------------------------------------------"
+			$BB echo "=========================================================="
 			$BB echo -n "Please choose a number: "
 			read bootAniChoice
 		elif $BB [ $NO_MENU -eq 1 ]; then
@@ -2039,7 +1989,7 @@ _load()
 
 	installLiveWallpapers()
 	{
-		LIVEWALLPAPER_DIR=/sdcard/goodies/livewallpapers
+		LIVEWALLPAPER_DIR=$DROIDBOX_DIR_EXTERNAL/goodies/livewallpapers
 		
 		loadLiveWallpaper()
 		{
@@ -2056,7 +2006,7 @@ _load()
 		}
 		
 		if $BB [ $NO_MENU -eq 0 ]; then
-			$BB echo "----------------------------------------------------------"
+			$BB echo "=========================================================="
 			$BB echo "1   Android 1            19  Neural Network Green"
 			$BB echo "2   Android 2            20  Neural Network Red"
 			$BB echo "3   Android 3            21  Electric"
@@ -2075,7 +2025,7 @@ _load()
 			$BB echo "16  Droid 3              34  T.A.R.D.I.S."
 			$BB echo "17  Droid 4              35  Original"
 			$BB echo "18  Neural Network Blue  36  Exit this menu."
-			$BB echo "----------------------------------------------------------"
+			$BB echo "=========================================================="
 			$BB echo -n "Please choose a number: "
 			read lwpChoice
 		elif $BB [ $NO_MENU -eq 1 ]; then
@@ -2125,7 +2075,7 @@ _load()
 
 	installFonts()
 	{
-		FONT_DIR=/sdcard/goodies/fonts
+		FONT_DIR=$DROIDBOX_DIR_EXTERNAL/goodies/fonts
 		FONT_URL="http://www.froyoroms.com/files/developers/jrummy/JRummy/Other/goodies/fonts"
 		
 		loadFonts()
@@ -2147,7 +2097,7 @@ _load()
 		}
 		
 		if $BB [ $NO_MENU -eq 0 ]; then
-			$BB echo "----------------------------------------------------------"
+			$BB echo "=========================================================="
 			$BB echo "1   Antipasto                15  Frontier"
 			$BB echo "2   Applegaramound           16  Gangsta"
 			$BB echo "3   Arial                    17  Haze"
@@ -2162,7 +2112,7 @@ _load()
 			$BB echo "12  Dejavu                   26  Zegoelight"
 			$BB echo "13  Dogtown                  27  Exit this menu."
 			$BB echo "14  Droid"
-			$BB echo "----------------------------------------------------------"
+			$BB echo "=========================================================="
 			$BB echo -n "Please choose a number: "
 			read fontChoice
 		elif $BB [ $NO_MENU -eq 1 ]; then
@@ -2203,7 +2153,7 @@ _load()
 
 	installExtraApps()
 	{
-		EXTRA_APPS_DIR=/sdcard/goodies/extraapps
+		EXTRA_APPS_DIR=$DROIDBOX_DIR_EXTERNAL/goodies/extraapps
 		EXTRA_APPS_URL="http://www.froyoroms.com/files/developers/jrummy/JRummy/Other/goodies/extraapps"
 		
 		loadExtraApps()
@@ -2222,7 +2172,7 @@ _load()
 		}
 		
 		if $BB [ $NO_MENU -eq 0 ]; then
-			$BB echo "----------------------------------"
+			$BB echo "====================================="
 			$BB echo " 1   Amazon MP3"
 			$BB echo " 2   IM"
 			$BB echo " 3   Slide Show Widget"
@@ -2236,7 +2186,7 @@ _load()
 			$BB echo " 11  Samsung Fascinate LWPs"
 			$BB echo " 12  Droid2 R2D2 LWP's"
 			$BB echo " 13  Exit this menu"
-			$BB echo "----------------------------------"
+			$BB echo "====================================="
 			$BB echo -n "Please choose a number: "
 			read appChoice
 		elif $BB [ $NO_MENU -eq 1 ]; then
@@ -2359,6 +2309,7 @@ _rb()
 			$BB mount -o remount,ro $i > /dev/nul 2>&1
 		done
 		
+		$BB sleep 1;
 		sync
 	}
 	
@@ -2366,13 +2317,11 @@ _rb()
 		""|--reboot)
 			$BB echo "See you soon ... "
 			prepareShutdown
-			$BB sleep 3
 			toolbox reboot
 		;;
 		-r|--recovery)
 			$BB echo "Booting into recovery ... "
 			prepareShutdown
-			$BB sleep 3
 			toolbox reboot recovery
 		;;
 		-p|--power)
@@ -2462,7 +2411,7 @@ _rmapk()
 		case $1 in
 			-m|--menu)
 				PROMPTREMOVE=0
-				$BB echo "----------------------------------------"
+				$BB echo "====================================="
 				$BB echo "1   Browser"
 				$BB echo "2   Calculator"
 				$BB echo "3   Calendar"
@@ -2482,7 +2431,7 @@ _rmapk()
 				$BB echo "17  Twitter"
 				$BB echo "18. You choose which apps to delete."
 				$BB echo "19. Exit this menu."
-				$BB echo "----------------------------------------"
+				$BB echo "====================================="
 				$BB echo -n "Please choose a number: "
 				read removeChoice
 				case $removeChoice in
@@ -2504,7 +2453,8 @@ _rmapk()
 					16)	removeAnyApp YouTube													;;
 					17)	removeAnyApp Twitter													;;
 					18) PROMPTREMOVE=1
-						$BB echo "-----------------------------------------"
+						$BB echo ""
+						$BB echo "====================================="
 						$BB ls /system/app
 						$BB echo ""
 						$BB echo -n "Please type the name of the app you wish to uninstall: "
@@ -2753,13 +2703,13 @@ _rstapps()
 	restoreAllInOneMenu()
 	{
 		if $BB [ $ALLINONE -eq 1 ]; then
-			$BB echo "-------------------------------------------------"
+			$BB echo "================================================="
 			$BB echo " 1  Restore all applications and their data"
 			$BB echo " 2  Restore all applications (no data)"
 			$BB echo " 3  Perform a complete restore"
 			$BB echo " 4  restore wifi, home setup and accounts"
 			$BB echo " 5  Exit this menu"
-			$BB echo "-------------------------------------------------"
+			$BB echo "================================================="
 			$BB echo -n "Please choose a number: "
 			read restoreChoice
 			case $restoreChoice in
@@ -2907,19 +2857,19 @@ _setcpu()
 	listFreq()
 	{
 		LIST=1
-		$BB echo "---------------------------------------"
+		$BB echo "======================================"
 		for freq in `$BB cat $AVAILABLE_FREQ`
 		do
 			$BB echo " $LIST  $freq MHz"
 			LIST=$( $BB expr $LIST + 1 )
 		done
 		$BB echo " $LIST  Exit this menu"
-		$BB echo "---------------------------------------"
+		$BB echo "======================================"
 	}
 	
 	listGovernors()
 	{
-		$BB echo "---------------------------------------"
+		$BB echo "======================================"
 		LIST=1
 		for governor in `$BB cat $AVAILABLE_GOVERNORS`
 		do
@@ -2927,7 +2877,7 @@ _setcpu()
 			LIST=$( $BB expr $LIST + 1 )
 		done
 		$BB echo " $LIST  Exit this menu"
-		$BB echo "---------------------------------------"
+		$BB echo "======================================"
 	}
 	
 	setFreq()
@@ -2990,7 +2940,7 @@ _setcpu()
 	
 	cpuInfo()
 	{
-		$BB echo "-----------------------------------------------------------"
+		$BB echo "========================================================"
 		$BB echo " Maximum Frequency Applied: "`$BB cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq`""
 		$BB echo " Maximum Frequency Available: "`$BB cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq`""
 		$BB echo " Minimum Frequency Applied: "`$BB cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq`""
@@ -3001,14 +2951,14 @@ _setcpu()
 		$BB echo " Scaling Governors Available: "`$BB cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_available_governors`""
 		$BB echo " Up Threshold Applied: "`$BB cat /sys/devices/system/cpu/cpu0/cpufreq/ondemand/up_threshold`""
 		$BB echo " Sampling Rate Applied: "`$BB cat /sys/devices/system/cpu/cpu0/cpufreq/ondemand/sampling_rate`""
-		$BB echo "-----------------------------------------------------------"
+		$BB echo "========================================================"
 	}
 	
 	if $BB [ $# -gt 0 ] ; then
 		_setcpuUsage
 	fi
 	
-	$BB echo "---------------------------------------"
+	$BB echo "==================================="
 	$BB echo " 1  Set Maximum Frequency."
 	$BB echo " 2  Set Minimum Frequency."
 	$BB echo " 3  Set Scaling Governor."
@@ -3016,7 +2966,7 @@ _setcpu()
 	$BB echo " 5  Advanced."
 	$BB echo " 6  Install kernels"
 	$BB echo " 7  Exit this menu"
-	$BB echo "---------------------------------------"
+	$BB echo "==================================="
 	$BB echo -n "Please choose a number: "
 	read cpuChoice
 	case $cpuChoice in
@@ -3046,14 +2996,14 @@ _setcpu()
 			checkDevice sholes return	# Currently only for sholes (init.sholes.rc).
 			# Droid X & Droid2 use: init.mapphone_umts.rc. Need other device info.
 			$BB mount -o remount,rw -t yaffs2 `$BB grep " /system " "/proc/mounts" | $BB cut -d ' ' -f1` / > /dev/nul 2>&1
-			$BB echo "-------------------------------------------"
+			$BB echo "==================================="
 			$BB echo " 1 Set minimum frequency at boot"
 			$BB echo " 2 Set maximum frequency at boot"
 			$BB echo " 3 Set scaling governer at boot"
 			$BB echo " 4 Set sampling rate"
 			$BB echo " 5 Set up threshold"
 			$BB echo " 6 Exit this menu"
-			$BB echo "-------------------------------------------"
+			$BB echo "==================================="
 			$BB echo -n "Please choose a number: "
 			read advancedChoice
 			case $advancedChoice in
@@ -3294,7 +3244,7 @@ _setprops()
 	case $1 in
 		""|-m|--menu)
 			EXIT_SETPROPS=0
-			$BB echo "----------------------------------"
+			$BB echo "==================================="
 			$BB echo " 1  Change Dalvik VM Heap Size"
 			$BB echo " 2  Change Wifi Scan Interval"
 			$BB echo " 3  Change Call Ring Delay"
@@ -3304,25 +3254,25 @@ _setprops()
 			$BB echo " 7  Stage Fright Control"
 			$BB echo " 8  Boot sound"
 			$BB echo " 9  Exit this menu"
-			$BB echo "----------------------------------"
+			$BB echo "==================================="
 			$BB echo -n "Please choose a number: "
 			read setPropChoice
 			case $setPropChoice in
 				1) 
-					$BB echo "----------------------------------"
+					$BB echo "==================================="
 					$BB echo " Your current VM Heap Size is: `getprop dalvik.vm.heapsize`"
 					$BB echo " 1  Set VM Heap Size to 12m"
 					$BB echo " 2  Set VM Heap Size to 16m"
 					$BB echo " 3  Set VM Heap Size to 24m (defualt)"
 					$BB echo " 4  Set VM Heap Size to 32m"
 					$BB echo " 5  Exit this menu"
-					$BB echo "----------------------------------"
+					$BB echo "==================================="
 					$BB echo -n "Please choose a number: "
 					read heapSizeChoice
 					vmHeap
 				;;
 				2) 
-					$BB echo "---------------------------------------------"
+					$BB echo "============================================="
 					$BB echo " Your current wifi scan interval is: `getprop wifi.supplicant_scan_interval`"
 					$BB echo " 1  Change wifi scan interval to 30 seconds"
 					$BB echo " 2  Change wifi scan interval to 45 seconds"
@@ -3331,13 +3281,13 @@ _setprops()
 					$BB echo " 5  Change wifi scan interval to 2 minutes"
 					$BB echo " 6  Change wifi scan interval to 3 minutes"
 					$BB echo " 7  Exit this menu"
-					$BB echo "---------------------------------------------"
+					$BB echo "============================================="
 					$BB echo -n "Please choose a number: "
 					read wifiScanChoice
 					wifiScan
 				;;
 				3) 
-					$BB echo "------------------------------"
+					$BB echo "==============================="
 					$BB echo " 1  Reduce ring delay by 1/4"
 					$BB echo " 2  Reduce ring delay by 1/3"
 					$BB echo " 3  Reduce ring delay in half"
@@ -3345,13 +3295,13 @@ _setprops()
 					$BB echo " 5  Reduce ring delay by 3/4"
 					$BB echo " 6  Set to defualt delay time"
 					$BB echo " 7  Exit this menu"
-					$BB echo "------------------------------"
+					$BB echo "==============================="
 					$BB echo -n "Please choose a number: "
 					read ringDelayChoice
 					ringDelay 
 				;;
 				4) 
-					$BB echo "---------------------------------------------------"
+					$BB echo "==========================================================="
 					$BB echo " ** The lower the value the faster the scrolling speed **"
 					$BB echo " Your current events per second is: `getprop windowsmgr.max_events_per_sec`"
 					$BB echo ""
@@ -3360,24 +3310,24 @@ _setprops()
 					$BB echo " 3  Set max events per second to 55"
 					$BB echo " 4  Set max events per second to 50"
 					$BB echo " 5  Set max events per second to 45"  
-					$BB echo "---------------------------------------------------"
+					$BB echo "==========================================================="
 					$BB echo -n "Please choose a number: "
 					read maxEventsChoice
 					maxEvents
 				;;
 				5)
-					$BB echo "--------------------------------------------------------------"
+					$BB echo "=============================================================="
 					$BB echo " Hard key lights are currently "$(if $BB [ `getprop ro.mot.buttonlight.timeout` -eq 0 ]; then echo on ; else echo off ; fi)" while the screen is on"
 					$BB echo ""
 					$BB echo " 1  Enable hard key lights to stay on while the screen is on"
 					$BB echo " 2  Disable hard key lights while the screen is on (default)"
-					$BB echo "--------------------------------------------------------------"
+					$BB echo "=============================================================="
 					$BB echo -n "Please choose a number: "
 					read buttonLightChoice
 					buttonLight
 				;;
 				6)
-					$BB echo "---------------------------------------------"
+					$BB echo "======================================================="
 					$BB echo " ** The lower the value the shorter the delay **"
 					$BB echo " Your current value is: `getprop mot.proximity.delay`"
 					$BB echo ""
@@ -3389,13 +3339,13 @@ _setprops()
 					$BB echo " 6 Set proximity delay to 200"
 					$BB echo " 7 Set proximity delay to 150"
 					$BB echo " 8 Set proximity delay to 100"
-					$BB echo "---------------------------------------------"
+					$BB echo "======================================================"
 					$BB echo -n "Please choose a number: "
 					read proximityDelayChoice
 					proximityDelay
 				;;
 				7)
-					$BB echo "----------------------------"
+					$BB echo "============================"
 					$BB echo " 1  Turn Media HTTP off"
 					$BB echo " 2  Turn Media HTTP on"
 					$BB echo " 3  Turn Media Scan off"
@@ -3404,16 +3354,16 @@ _setprops()
 					$BB echo " 6  Turn Media Meta on"
 					$BB echo " 7  Turn Media Player off"
 					$BB echo " 8  Turn Media Player on"
-					$BB echo "----------------------------"
+					$BB echo "============================"
 					$BB echo -n "Please choose a number: "
 					read stageFrightChoice
 					stageFright
 				;;
 				8)
-					$BB echo "----------------------------"
+					$BB echo "============================"
 					$BB echo " 1  Turn boot sound off"
 					$BB echo " 2  Trun boot sound on"
-					$BB echo "----------------------------"
+					$BB echo "============================"
 					$BB echo -n "Please choose a number: "
 					read bootSoundChoice
 					bootSound
@@ -3489,7 +3439,7 @@ _slim()
   # Last modified:
   #    10-3-2010
   #
-	SLIM_DIR=/sdcard/slim
+	SLIM_DIR=/mnt/sdcard/slim
 	
 	_slimUsage()
 	{
@@ -3672,12 +3622,12 @@ _switch()
 	
 	switchBootAnimation()
 	{
-		if $BB [ -e /sdcard/bootanimation.zip ]; then
+		if $BB [ -e /mnt/sdcard/bootanimation.zip ]; then
 			$BB echo -n "Removing old boot animation ... "
 			$BB find /data/local /system/media -name bootanimation.zip -exec $BB rm -f {} ';'
 			$BB echo "done."
 			$BB echo -n "Installing bootanimation from /sdcard ... "
-			$BB cp -f /sdcard/bootanimation.zip /data/local
+			$BB cp -f /mnt/sdcard/bootanimation.zip /data/local
 			$BB chmod 0655 /data/local/bootanimation.zip
 			$BB echo "done."
 		else
@@ -3687,9 +3637,9 @@ _switch()
 	
 	switchLiveWallpaper()
 	{
-		if $BB [ -e /sdcard/LiveWallpapers.apk ]; then
+		if $BB [ -e /mnt/sdcard/LiveWallpapers.apk ]; then
 			$BB echo -n "Installing Live Wallpaper ... "
-			$BB cp -f /sdcard/LiveWallpaper.apk /system/app
+			$BB cp -f /mnt/sdcard/LiveWallpaper.apk /system/app
 			$BB echo "done."
 		else
 			$BB echo "Error: LiveWallpapers.apk not found on the root of your sdcard."
@@ -3699,7 +3649,7 @@ _switch()
 	switchAnyFile()
 	{
 		# Start file checks:
-		if $BB [ ! -e /sdcard/$1 ]; then
+		if $BB [ ! -e /mnt/sdcard/$1 ]; then
 			$BB echo "Error: $1 not found on the root of your sdcard."
 			return
 		elif $BB [ -z `$BB find /system -type f -print | grep -i $1` ]; then
@@ -3715,7 +3665,7 @@ _switch()
 		# Make a backup of what is being switched.
 		$BB mkdir -p $DROIDBOX_DIR_EXTERNAL/switch_backup
 		$BB find /system -type f -iname $1 -exec $BB cp {} $DROIDBOX_DIR_EXTERNAL/switch_backup ';'
-		$BB cp -f /sdcard/$1 $SWITCH
+		$BB cp -f /mnt/sdcard/$1 $SWITCH
 		$BB echo "done."
 	}
 	
@@ -3737,7 +3687,7 @@ _switch()
 	esac
 }
 
-_symlinkdb()
+_setlinks()
 {
   #############################################################
   # Description:
@@ -3749,27 +3699,56 @@ _symlinkdb()
   #
 	_linkdroidboxUsage()
 	{
-		$BB echo "Usage: $SCRIPT_NAME symlinkdb"
+		$BB echo "Usage: link [-db|-bb]"
 		$BB echo ""
-		$BB echo "Symlinks droidbox functions"
+		$BB echo "options:"
+		$BB echo "      -db | droidbox    symlinks droidbox functions"
+		$BB echo "      -bb | busybox     symlinks busybox applets"
 	}
 	
-	if $BB [ $# -gt 0 ] ; then
-		_linkdroidboxUsage
-	fi
+	symlinkDroidbox()
+	{
+		$BB echo "symlinking droidbox functions ..."
+		$BB echo ""
+		
+		for script in ads allinone apploc bkapps cache camsounds clean compcache chglog donate exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setlinks setprops slim sound switch sysro sysrw usb zipalign_apks
+		do
+			if $BB [ -h /system/xbin/$script ]; then
+				$BB rm -f /system/xbin/$script
+			fi
+			$BB echo -n "Symlinking: $script ... "
+			$BB ln -s $0 /system/xbin/$script
+			$BB echo "done."
+		done
+	}
 	
-	$BB echo "symlinking droidbox functions ..."
-	$BB echo ""
+	symlinkBusybox()
+	{
+	  # Sure there is a way better way to do this :-/
+		$BB echo "symlinking busybox applets ..."
+		$BB echo ""
+		
+		for applet in `$BB | $BB grep , | $BB grep -v -i busybox | $BB grep -v -i copyright | $BB sed 's|,||g'`
+		do
+			$BB echo -n "Symlinking: $applet ... "
+			if $BB [ -e $($BB dirname $BB)/$applet ]; then
+				$BB rm -f $($BB dirname $BB)/$applet
+			fi
+			$BB ln -s $BB $($BB dirname $BB)/$applet
+			$BB echo "done."
+		done
+	}
 	
-	for script in ads allinone apploc bkapps cache camsounds compcache chglog donate exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch sysrw sysro usb zipalign_apks
-	do
-		if $BB [ -e /system/xbin/$script ]; then
-			$BB rm -f /system/xbin/$script
-		fi
-		$BB echo -n "Symlinking: $script ... "
-		$BB ln -s $0 /system/xbin/$script
-		$BB echo "done."
-	done
+	case $1 in
+		-db|droidbox)
+			symlinkDroidbox
+		;;
+		-bb|busybox)
+			symlinkBusybox
+		;;
+		*)
+			
+	esac
 }
 
 _sysro()
@@ -3853,8 +3832,16 @@ _usb()
 			$BB echo "" > /sys/devices/platform/usb_mass_storage/lun0/file
 			$BB echo "USB Mass Storage Disabled"
 		;;
-		*)
+		-h|help|-help)
 			_usbUsage
+		;;
+		*)
+			# Toggle on/off:
+			if $BB [ -z "$($BB mount | $BB grep /sdcard)" ]; then
+				_usb -d
+			else
+				_usb -e
+			fi
 		;;
 	esac
 }
@@ -3880,6 +3867,7 @@ _zipalign_apks()
 		$BB echo ""
 		$BB echo "    -a  | --all     Zipaligns all apks in /data and /system"
 		$BB echo "                    ^ Runs as default with no options."
+		$BB echo "    -m  | --menu    Prints menu with options"
 		$BB echo "    -sd | --sdcard  Zipaligns all apks in /sdcard"
 		$BB echo "    <destination>   Zipaligns all apks in users choice"
 		$BB echo "    -h  | --help    This help"
@@ -3890,6 +3878,38 @@ _zipalign_apks()
 		$BB echo "    of choice just type the directory path after"
 		$BB echo "    `$BB basename $0`."
 		$BB echo "    Example: `$BB basename $0` /sdcard/apps"
+	}
+	
+	zipalignApksMenu()
+	{
+		$BB echo "============================================="
+		$BB echo " 1  Zipalign all apks in /system and /data"
+		$BB echo " 2  Enter directory to zipalign apks in"
+		$BB echo " 3  Exit this menu"
+		$BB echo "============================================="
+		$BB echo -n "Please choose a number: "
+		read zipalignChoice
+		case $zipalignChoice in
+			1)
+				_zipalign_apks --all
+			;;
+			2)
+				$BB echo "================================================="
+				$BB echo " Please choose a destination to ZipAlign apks"
+				$BB echo " Example 1: /sdcard/my_apps"
+				$BB echo " Example 2: /system/app"
+				$BB echo "================================================="
+				$BB echo -n "Please enter path to apks: "
+				read zipchoice
+				_zipalign_apks "$zipchoice"
+			;;
+			3)
+			
+			;;
+			*)
+				$BB echo "Error: Invalid option in $zipalignChoice"
+			;;
+		esac
 	}
 	
 	zipalignApks()
@@ -3907,7 +3927,7 @@ _zipalign_apks()
 		if $BB [ -z "$($BB mount | $BB grep /sdcard)" ]; then
 			TMP_ZIPALIGN_DIR=/data/local/zipalign_apks/tmp
 		else
-			TMP_ZIPALIGN_DIR=/sdcard/zipalign_apks/tmp
+			TMP_ZIPALIGN_DIR=/mnt/sdcard/zipalign_apks/tmp
 		fi
 		
 		if $BB [ ! -e /system/bin/zipalign -a ! -e /system/xbin/zipalign ]; then
@@ -3966,6 +3986,9 @@ _zipalign_apks()
 		""|-a|--all)
 			zipalignApks "/data /system"
 		;;
+		-m|--menu)
+			zipalignApksMenu
+		;;
 		-sd|--sdcard)
 			checkSd
 			zipalignApks "/mnt/sdcard /sdcard"
@@ -3984,12 +4007,12 @@ _zipalign_apks()
 	esac
 }
 
- ###--------------------------------
- #-                 __
- #--  |\/| _ . _   (_  _ _. _ |_ .
- #--  |  |(_||| )  __)(_| ||_)|_ .
- #-                        |
- ###--------------------------------
+ ###================================
+ #=                 __
+ #==  |\/| _ . _   (_  _ _. _ |_ .
+ #==  |  |(_||| )  __)(_| ||_)|_ .
+ #=                        |
+ ###================================
 
 checkBusybox
 _sysrw > /dev/null
@@ -4021,6 +4044,9 @@ case ${CMD} in
 	;;
 	camsound)
 		_camsound ${ARG}
+	;;
+	clean)
+		_clean ${ARG}
 	;;
 	compcache)
 		_compcache ${ARG}
@@ -4061,6 +4087,9 @@ case ${CMD} in
 	setcpu)
 		_setcpu ${ARG}
 	;;
+	setlinks)
+		_setlinks ${ARG}
+	;;
 	setprops)
 		_setprops ${ARG}
 	;;
@@ -4072,9 +4101,6 @@ case ${CMD} in
 	;;
 	switch)
 		_switch ${ARG}
-	;;
-	symlinkdb)
-		_symlinkdb ${ARG}
 	;;
 	sysro)
 		_sysro ${ARG}
