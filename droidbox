@@ -61,7 +61,7 @@ droidBoxUsage()
 	$BB echo "Currently defined functions:"
 	$BB echo ""
 	$BB echo "ads, allinone, apploc, bkapps, cache, camsound, compcache,"
-	$BB echo "chglog, exe, fixperms, flashrec, freemem, install_zip,"
+	$BB echo "chglog, donate, exe, fixperms, flashrec, freemem, install_zip,"
 	$BB echo "load, rb, rmapk, rstapps, setcpu, setprops, slim, sound"
 	$BB echo "switch, symlinkdb, sysrw, sysro, usb, zipalign_apks"
 	$BB echo ""
@@ -290,7 +290,8 @@ _allinone()
 		$BB echo " 12  Flash recovery image"
 		$BB echo " 13  Change build properties"
 		$BB echo " 14  Clean out /data cache"
-		$BB echo " 15  Exit this menu"
+		$BB echo " 15  Donate to JRummy16 :)"
+		$BB echo " 16  Exit this menu"
 		$BB echo "---------------------------------------"
 		$BB echo -n "Please choose a number: "
 		read scriptChoice
@@ -342,7 +343,7 @@ _allinone()
 				$BB echo " 1  Free 50MB of Internal Memory"
 				$BB echo " 2  Free 75MB of Internal Memory"
 				$BB echo " 3  Free 100MB of Internal Memory"
-				$BB echo " 4  Default Internal Memory"
+				$BB echo " 4  Default Internal Memory (25mb)"
 				$BB echo " 5  Exit this menu"
 				$BB echo "----------------------------------"
 				$BB echo -n "Please choose a number: "
@@ -397,7 +398,10 @@ _allinone()
 				_cache --clean
 			;;
 			15)
-
+				_donate
+			;;
+			16)
+			
 			;;
 			*)
 				$BB echo "Error: Invalid option in $scriptChoice"
@@ -831,86 +835,142 @@ _cache()
 {
   #############################################################
   # Description:
-  #    Clear/backup/restore /data cache files
+  #    Clear or symlinks /data cache directories
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
   #    10-9-2010
   #
-	CACHE_BACKUP=$DROIDBOX_DIR_EXTERNAL/cache_backup
+	clearCache()
+	{
+		MEMORY_BEFORE=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
+		CURRENT=1
+		
+		$BB echo "Cleaning out cache ... "
+		$BB echo ""
+		
+		$BB find $1 -type d -print | $BB grep -i cache | while read d
+		do
+			CACHE_SUM=$($BB find $d -type f | $BB wc -l)
+			$BB find $d -type f -print | while read i
+			do
+				if $BB [ ! `$BB echo $i | $BB sed 's|/| |g' | $BB awk '{print $1}')` == "data" ]; then
+					CACHE_LOC=sdcard
+				else
+					CACHE_LOC=`$BB echo $i | $BB sed 's|/| |g' | $BB awk '{print $3}')`
+				fi
+				$BB echo -n "$CACHE_LOC ($CURRENT of $CACHE_SUM) Removing $($BB basename $i) ... "
+				$BB rm -f $i
+				$BB echo "done."
+				CURRENT=$($BB expr $CURRENT + 1)
+			done
+		done
+		
+		# TODO: convert kb to mb if freed over 1 mb
+		MEMORY_AFTER=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
+		FREED_MEMORY=$($BB expr $MEMORY_AFTER - $MEMORY_BEFORE)
+		
+		# For times when little or no cache is wiped:
+		if $BB [ $FREED_MEMORY -lt 0 ]; then
+			FREED_MEMORY=0
+		fi
+		
+		$BB echo ""
+		$BB echo "cache cleared ... Freed $FREED_MEMORY kb"
+	}
+	
+	moveCacheToSD()
+	{
+		if $BB [ ! -d $1 ]; then
+			$BB echo "Error: No cache found for $1"
+			return
+		fi
+		
+		$BB echo "Moving cache to SD card ... "
+		$BB echo ""
+		
+		$BB find $1 -type d -iname cache -print | while read d
+		do
+			package=$($BB echo $d | $BB sed 's|/| |g' | $BB awk '{print $3}')
+			$BB echo -n "moving cache for $package to sdcard ... "
+			$BB echo $d >> /mnt/sdcard/data_cache/cache.list
+			$BB mkdir -p /mnt/sdcard/data_cache/$package/cache
+			$BB rm -R $d
+			$BB ln -s /mnt/sdcard/data_cache/$package/cache $d
+			$BB echo "done."
+		done
+	}
+	
+	moveCacheToData()
+	{
+		if $BB [ ! -e /mnt/sdcard/data_cache/cache.list ]; then
+			$BB echo "Error: No cache found on sdcard"
+			return
+		fi
+		
+		$BB echo "Moving cache to /data ... "
+		$BB echo ""
+		
+		for cache in `$BB cat /mnt/sdcard/data_cache/cache.list`
+		do
+			package=$($BB echo $cache | $BB sed 's|/| |g' | $BB awk '{print $3}')
+			$BB echo -n "Moving cache for $package to /data ... "
+			if $BB [ -d $cache -a -h $cache ]; then
+				$BB rm -R $cache
+				$BB mkdir -p $cache
+			fi
+			$BB echo "done."
+		done
+		
+		$BB rm -R /mnt/sdcard/data_cache
+	}
 	
 	case $1 in
-		-c|--clean)
-			$BB echo "Cleaning out cache ... "
-			$BB echo ""
-			MEMORY_BEFORE=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
-			
-			CURRENT=1
-			$BB find /data/data -type d -print | $BB grep -i cache | while read d
-			do
-				CACHE_SUM=$($BB find $d -type f | $BB wc -l)
-				$BB find $d -type f -print | while read i
-				do
-					$BB echo -n "($CURRENT of $CACHE_SUM) Removing $($BB basename $i) ... "
-					$BB rm -f $i
-					$BB echo "done."
-					CURRENT=$($BB expr $CURRENT + 1)
-				done
-			done
-			
-			MEMORY_AFTER=$($BB free | $BB grep -i mem | $BB awk '{print $4}')
-			$BB echo ""
-			$BB echo "Freed $($BB expr $MEMORY_AFTER - $MEMORY_BEFORE) kb"
+		-rmall|remove_all)
+			clearCache "/data/data /mnt/sdcard"
 		;;
-		-b|--backup)
-			sdCheck
-			$BB echo "Backing up cache ... "
-			$BB echo ""
-			
-			$BB mkdir -p $CACHE_BACKUP
-			
-			CURRENT=1
-			$BB find /data/data -type d -print | $BB grep -i cache | while read d
-			do
-				CACHE_SUM=$($BB find $d -type f | $BB wc -l)
-				$BB find $d -type f -print | while read i
-				do
-					$BB echo -n "($CURRENT of $CACHE_SUM) Backing up $($BB basename $i) ... "
-					$BB echo $i >> $CACHE_BACKUP/cache.list
-					$BB cp -f $i $CACHE_BACKUP
-					$BB echo "done"
-					CURRENT=$($BB expr $CURRENT + 1)
-				done
-			done
+		-rmsd|remove_sdcard)
+			clearCache "/mnt/sdcard"
 		;;
-		-r|--restore)
-			sdCheck
-			$BB echo "Restoring cache ... "
-			$BB echo ""
-			CURRENT=1
-			CACHE_SUM=$($BB cat $CACHE_BACKUP/cache.list | $BB wc -l)
-			if $BB [ ! -e $CACHE_BACKUP/cache.list ]; then
-				$BB echo "Error: no backup found."
-				return
-			fi
-			for i in $($BB cat $CACHE_BACKUP/cache.list)
-			do
-				if $BB [ -e $CACHE_BACKUP/$($BB basename $i) ]; then
-					$BB echo -n "($CURRENT of $CACHE_SUM) Restoring $($BB basename $i) ... "
-					$BB mkdir -p $($BB dirname $i)
-					$BB cp -f $CACHE_BACKUP/$($BB basename $i) $i
-					$BB echo "done."
-					CURRENT=$($BB expr $CURRENT + 1)
-				fi
-			done
+		-rmdata|remove_data)
+			clearCache "/data/data"
+		;;
+		-mvsd|move_sdcard)
+			moveCacheToSD "/data/data"
+		;;
+		-mvdata|move_data)
+			moveCacheToData
+		;;
+		-mvbrow|move_browser)
+			/data/data/com.android.browser
+		;;
+		-mvmaps|move_maps)
+			/data/data/com.google.android.apps.maps
+		;;
+		-mvstreet|move_streetview)
+			/data/data/com.google.android.street 
+		;;
+		-mvmarket|move_market)
+			/data/data/com.android.vending
+		;;
+		-mvgmail|move_gmail)
+			/data/data/com.google.android.gm/cache
 		;;
 		*)
-			$BB echo "Usage: cache [-c|-b|-r]"
+			$BB echo "usage: cache [-rmall|-rmsd|-rmdata|-mvsd|-mvdata|-mvbrow|"
+			$BB echo "              -mvmaps|-mvstreet|-mvvend|-mvgmail]"
 			$BB echo ""
-			$BB echo "Options:"
-			$BB echo "    -c    Clean out /data cache"
-			$BB echo "    -b    Back up /data cache files"
-			$BB echo "    -r    Restore /data cache files"
+			$BB echo "options:"
+			$BB echo "    -rmall       Clear out all cache in /data & /sdcard"
+			$BB echo "    -rmsd        Clear out all cache in /sdcard"
+			$BB echo "    -rmdata      Clear out all cache in /data"
+			$BB echo "    -mvsd        Move cache from /data to /sdcard"
+			$BB echo "    -mvdata      Move cache from /sdcard to /data"
+			$BB echo "    -mvbrow      Move browser cache to sdcard"
+			$BB echo "    -mvmaps      Move Maps cache to sdcard"
+			$BB echo "    -mvstreet    Move Street View cache to sdcard"
+			$BB echo "    -mvvend      Move Market cache to sdcard"
+			$BB echo "    -mvgmail     Move Gmail cache to sdcard"
 		;;
 	esac
 }
@@ -957,6 +1017,29 @@ _camsound()
 	esac
 }
 
+_clear()
+{
+  #############################################################
+  # Description:
+  #    Clears market history
+  # Created by:
+  #    Jared Rummler (JRummy16) 
+  # Last modified:
+  #    10-11-2010
+  #
+	case $1 in
+		-m|market|--market)
+			$BB echo -n "Clearing market history ... "
+			$BB find /data/data/com.android.vending -iname suggestions.db -exec $BB rm -f {} ';'
+			$BB echo "done."
+		;;
+		*)
+			$BB echo "usage: clear market"
+			$BB echo ""
+			$BB echo "Clears market search history"
+		;;
+	esac
+}
 
 _compcache()
 {
@@ -1043,6 +1126,18 @@ _chglog()
 			$BB sleep 10
 		fi
 	fi
+}
+
+_donate()
+{
+  # Donate to the developer :-p
+  # 
+	if $BB [ $# -gt 0 ]; then
+		$BB echo "Usage: Donate to the developer of droidbox (JRummy16)"
+		$BB echo "       Donations are appreciated :)"
+	fi
+	
+	am start -a android.intent.action.VIEW -d http://bit.ly/dzbPGd
 }
 
 _exe()
@@ -3666,7 +3761,7 @@ _symlinkdb()
 	$BB echo "symlinking droidbox functions ..."
 	$BB echo ""
 	
-	for script in ads allinone apploc bkapps cache camsounds compcache chglog exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch sysrw sysro usb zipalign_apks
+	for script in ads allinone apploc bkapps cache camsounds compcache chglog donate exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch sysrw sysro usb zipalign_apks
 	do
 		if $BB [ -e /system/xbin/$script ]; then
 			$BB rm -f /system/xbin/$script
@@ -3935,6 +4030,9 @@ case ${CMD} in
 	;;
 	exe)
 		_exe ${ARG}
+	;;
+	donate)
+		_donate ${ARG}
 	;;
 	fixperms)
 		_fixperms ${ARG}
