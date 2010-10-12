@@ -30,6 +30,7 @@
 SCRIPT_NAME=droidbox
 CMD=$($BB basename $0)
 ARG=$@
+BB=busybox
 
 # Directories:
 DROIDBOX_DIR_EXTERNAL=/mnt/sdcard/droidbox
@@ -61,7 +62,7 @@ droidBoxUsage()
 	$BB echo "Currently defined functions:"
 	$BB echo ""
 	$BB echo "ads, allinone, apploc, bkapps, cache, camsound, clean,"
-	$BB echo "compcache, chglog, donate, exe, fixperms, flashrec,"
+	$BB echo "compcache, chglog, donate, eri, exe, fixperms, flashrec,"
 	$BB echo "freemem, install_zip, load, rb, rmapk, rstapps, setcpu,"
 	$BB echo "setprops, slim, soundswitch, symlink, sysrw, sysro,"
 	$BB echo "usb, zipalign_apks"
@@ -293,8 +294,9 @@ _allinone()
 		$BB echo " 13  Change build properties"
 		$BB echo " 14  Clean out /data cache"
 		$BB echo " 15  Clear market search history"
-		$BB echo " 16  Donate to JRummy16 :)"
-		$BB echo " 17  Exit this menu"
+		$BB echo " 16  Change pulldown bar text"
+		$BB echo " 17  Donate to JRummy16 :)"
+		$BB echo " 18  Exit this menu"
 		$BB echo "=========================================="
 		$BB echo -n "Please choose a number: "
 		read scriptChoice
@@ -315,7 +317,8 @@ _allinone()
 			14)	_cache --menu										;;
 			15)	_clean market										;;
 			16)	_donate												;;
-			17)														;;
+			17)	_eri												;;
+			18)														;;
 			*)	$BB echo "Error: Invalid option in $scriptChoice"	;;
 		esac
 	}
@@ -1088,6 +1091,113 @@ _donate()
 	
 	$BB echo "Connecting to paypal ..."
 	am start -a android.intent.action.VIEW -d http://bit.ly/dzbPGd > /dev/null
+}
+
+_eri()
+{
+  #############################################################
+  # Description:
+  #    Changes the Verizon Wireless text in the pulldown bar
+  #    to whatever 16 character phrase your heart desires.
+  # Created by:
+  #    Jared Rummler (JRummy16)
+  # Last modified:
+  #    10-12-2010
+  #
+
+	if $BB [ $# -gt 0 ]; then
+		$BB echo "Usage: eri"
+		$BB echo ""
+		$BB echo "Changes the \"Verizon Wireless\" in the"
+		$BB echo "pulldown bar to your own custom text."
+	fi
+	
+	$BB echo ""
+	$BB echo "====================================================================="
+	$BB echo "Welcome to eri text changer by JRummy16! This will attempt to change"
+	$BB echo "the text in your pulldown bar that usually says \"Verizon Wireless\""
+	$BB echo "Note: The text MUST be 16 characters or less."
+	$BB echo
+	$BB echo -n "Please type what you would like the pull down bar to say: "
+	read eriText
+
+	characterCount=`$BB echo $eriText | $BB wc -L`
+
+	if $BB [ $characterCount -gt 16 ]; then
+		$BB echo "Error: You cannot set the text to more than 16 characters."
+		$BB echo "Please try again."
+		return
+	fi
+
+	# Make sure what we are changing is exactly 16 characters long:
+	case $characterCount in
+		1)	NEW_ERI="$eriText               "	;;
+		2)	NEW_ERI="$eriText              "	;;
+		3)	NEW_ERI="$eriText             "		;;
+		4)	NEW_ERI="$eriText            "		;;
+		5)	NEW_ERI="$eriText           "		;;
+		6)	NEW_ERI="$eriText          "		;;
+		7)	NEW_ERI="$eriText         "			;;
+		8)	NEW_ERI="$eriText        "			;;
+		9)	NEW_ERI="$eriText       "			;;
+		10)	NEW_ERI="$eriText      "			;;
+		11)	NEW_ERI="$eriText     "				;;
+		12)	NEW_ERI="$eriText    "				;;
+		13)	NEW_ERI="$eriText   "				;;
+		14)	NEW_ERI="$eriText  "				;;
+		15)	NEW_ERI="$eriText "					;;
+		16)	NEW_ERI="$eriText"					;;
+		*)	$BB echo "Error changing eri text!"
+			return								;;
+	esac
+
+	$BB echo -n "Getting neccessary files ... "
+	if $BB [ ! -e /system/bin/zip -a ! -e /system/xbin/zip ]; then
+		$BB wget -q http://froyoroms.com/files/developers/jrummy/JRummy/droidbox/zip -O /system/xbin/zip
+		$BB chmod 0755 /system/xbin/zip
+	fi
+	if $BB [ -e /system/etc/backup_eri.xml ]; then
+		$BB mkdir -p /data/local/tmp/res/xml
+		$BB cp -f /system/etc/backup_eri.xml /data/local/tmp/res/xml/eri.xml
+	else
+		$BB mkdir -p /data/local/tmp
+		$BB cp -f /system/framework/framework-res.apk /data/local/framework.zip
+		$BB unzip -q /data/local/framework.zip -d /data/local/tmp >/dev/null 2>&1
+		$BB rm -f /data/local/framework.zip
+		if $BB [ ! -z "`$BB grep -i "verizon wireless" /data/local/tmp/res/xml/eri.xml`" ]; then
+			# first time change. Making a backup for later changes:
+			$BB cp /data/local/tmp/res/xml/eri.xml /system/etc/backup_eri.xml
+		fi
+	fi
+	$BB echo "done."
+
+	# I'm doing this because some unzip commands seem to be borked in some versions of busybox
+	if $BB [ -e /data/local/tmp/res/xml/eri.xml ]; then
+		$BB wget -q http://froyoroms.com/files/developers/jrummy/JRummy/droidbox/eri.xml -O /data/local/tmp/res/xml/eri.xml
+	fi
+	if $BB [ -z "`$BB grep -i "verizon wireless" /data/local/tmp/res/xml/eri.xml`" ]; then
+		$BB echo "Error: Verizon Wireless not found. Could not change text."
+		return
+	fi
+
+	$BB echo -n "Setting pulldown text to $eriText ... "
+	$BB sed -i "s|Verizon Wireless|$NEW_ERI|" /data/local/tmp/res/xml/eri.xml
+	cd /data/local/tmp
+	zip -o /system/framework/framework-res.apk /res/xml/eri.xml >/dev/null 2>&1
+	cd /
+	$BB rm -R /data/local/tmp
+	$BB echo "done."
+
+	$BB echo "To see the change you must reboot your device."
+	$BB echo -n "Would you like to reboot now? (y/n): "
+	read rebootChoice
+	case $rebootChoice in
+		y|Y)
+			$BB echo "see you soon ... "
+			toolbox reboot
+		;;
+		*)	;;
+	esac
 }
 
 _exe()
@@ -3711,7 +3821,7 @@ _symlink()
 		$BB echo "symlinking droidbox functions ..."
 		$BB echo ""
 		
-		for script in ads allinone apploc bkapps cache camsounds clean compcache chglog donate exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch symlink sysro sysrw usb zipalign_apks
+		for script in ads allinone apploc bkapps cache camsounds clean compcache chglog donate eri exe fixperms flashrec freemem install_zip load rb rmapk rstapps setcpu setprops slim sound switch symlink sysro sysrw usb zipalign_apks
 		do
 			if $BB [ -h /system/xbin/$script ]; then
 				$BB rm -f /system/xbin/$script
@@ -4054,6 +4164,9 @@ case ${CMD} in
 	chglog)
 		_chglog ${ARG}
 	;;
+	eri)
+		_eri ${ARG}
+	;;
 	exe)
 		_exe ${ARG}
 	;;
@@ -4126,3 +4239,4 @@ if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 fi
 
 _sysro > /dev/null
+
