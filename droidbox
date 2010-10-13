@@ -30,7 +30,6 @@
 SCRIPT_NAME=droidbox
 CMD=$($BB basename $0)
 ARG=$@
-BB=busybox
 
 # Directories:
 DROIDBOX_DIR_EXTERNAL=/mnt/sdcard/droidbox
@@ -99,7 +98,7 @@ checkBusybox()
 		exit
 	fi
 	
-	# Use droidbox busybox incase user has outdated borked applets
+	# Use droidbox's busybox incase user has outdated borked applets
 	if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 		BB=/data/data/com.jrummy.droidbox/files/busybox
 		$BB chmod 755 /data/data/com.jrummy.droidbox/files/busybox
@@ -149,9 +148,9 @@ promptToReboot()
 	if $BB [ $GUI -eq 0 ]; then
 		$BB echo ""
 		case $1 in
-			performance)	$BB echo "A reboot is suggested for the best performance for your device."			;;
-			changes)		$BB echo "To see the changes take effect a reboot is required."						;;
-			*)				$BB echo "A reboot is suggested."													;;
+			performance)	$BB echo "A reboot is suggested for the best performance for your device."	;;
+			changes)		$BB echo "To see the changes take effect a reboot is required."				;;
+			*)				$BB echo "A reboot is suggested."											;;
 		esac
 		$BB echo -n "Would you like to reboot your device now? (y/n): "
 		read rebootChoice
@@ -247,7 +246,7 @@ _allinone()
   # Created by:
   #    Jared Rummler (JRummy16)
   # Last modified:
-  #    9-9-2010
+  #    10-12-2010
   #
 	ALLINONE=1
 	
@@ -292,7 +291,7 @@ _allinone()
 		$BB echo " 11  Mount / unmount USB storage"
 		$BB echo " 12  Flash clockwork recovery image"
 		$BB echo " 13  Change build properties"
-		$BB echo " 14  Clean out /data cache"
+		$BB echo " 14  Manage cache (move 2sd / wipe)"
 		$BB echo " 15  Clear market search history"
 		$BB echo " 16  Change pulldown bar text"
 		$BB echo " 17  Donate to JRummy16 :)"
@@ -316,8 +315,8 @@ _allinone()
 			13)	_setprops											;;
 			14)	_cache --menu										;;
 			15)	_clean market										;;
-			16)	_donate												;;
-			17)	_eri												;;
+			16)	_eri												;;
+			17)	_donate												;;
 			18)														;;
 			*)	$BB echo "Error: Invalid option in $scriptChoice"	;;
 		esac
@@ -339,6 +338,7 @@ _allinone()
 	
 	if $BB [ $# -gt 0 ]; then
 		_allinoneUsage
+		return
 	fi
 	
 	checkSd
@@ -594,7 +594,7 @@ _bkapps()
 			printMsg ". done."
 		fi
 	}
-
+	
 	backupAnyApp()
 	{
 		AA_FIND=$( $BB ls /data/app /data/app-private | $BB grep -i $1 )
@@ -615,7 +615,27 @@ _bkapps()
 			done
 		fi
 	}
-
+	
+	backupBootAni()
+	{
+		$BB echo -n "Backing up boot animation ... "
+		$BB mkdir -p $BACKUP_DIR/BootAniBackup
+		$BB find /data/local -name bootanimation.zip -exec $BB cp -f {} $BACKUP_DIR/BootAniBackup/data_local_bootani.zip ';'
+		$BB find /system/media -name bootanimation.zip -exec $BB cp -f {} $BACKUP_DIR/BootAniBackup/system_media_bootani.zip ';'
+		$BB echo "Done."
+	}
+	
+	backupFonts()
+	{
+		$BB echo -n "Backing up system fonts ... "
+		$BB mkdir -p $BACKUP_DIR/SystemFonts
+		for ttf in /system/fonts/*.ttf
+		do
+			$BB cp -f $ttf $BACKUP_DIR/SystemFonts
+		done
+		$BB echo "done."
+	}
+	
 	acssiBanner()
 	{
 		# If you use this script please do not remove the banner.
@@ -691,6 +711,12 @@ _bkapps()
 				backupData
 				BANNER=1
 			;;
+			-b|--bootani)
+				backupBootAni
+			;;
+			-f|--fonts)
+				backupFonts
+			;;
 			-nd|--nodata)
 				removeBackup $BACKUP_DIR/apps
 				backupApps
@@ -755,6 +781,25 @@ _cache()
   # Last modified:
   #    10-9-2010
   #
+	_cacheUsage()
+	{
+		$BB echo "usage: cache [-rmall|-rmsd|-rmdata|-mvsd|-mvdata|-mvbrow|"
+		$BB echo "              -mvmaps|-mvstreet|-mvvend|-mvgmail]"
+		$BB echo ""
+		$BB echo "options:"
+		$BB echo "    --menu       Prints menu with options"
+		$BB echo "    -rmall       Clear out all cache in /data & /sdcard"
+		$BB echo "    -rmsd        Clear out all cache in /sdcard"
+		$BB echo "    -rmdata      Clear out all cache in /data"
+		$BB echo "    -mvsd        Move cache from /data to /sdcard"
+		$BB echo "    -mvdata      Move cache from /sdcard to /data"
+		$BB echo "    -mvbrow      Move browser cache to sdcard"
+		$BB echo "    -mvmaps      Move Maps cache to sdcard"
+		$BB echo "    -mvstreet    Move Street View cache to sdcard"
+		$BB echo "    -mvvend      Move Market cache to sdcard"
+		$BB echo "    -mvgmail     Move Gmail cache to sdcard"
+	}
+	
 	cacheMenu()
 	{
 		$BB echo "======================================="
@@ -840,12 +885,16 @@ _cache()
 		$BB find $1 -type d -iname cache -print | while read d
 		do
 			package=$($BB echo $d | $BB sed 's|/| |g' | $BB awk '{print $3}')
-			$BB echo -n "moving cache for $package to sdcard ... "
-			$BB echo $d >> /mnt/sdcard/data_cache/cache.list
-			$BB mkdir -p /mnt/sdcard/data_cache/$package/cache
-			$BB rm -R $d
-			$BB ln -s /mnt/sdcard/data_cache/$package/cache $d
-			$BB echo "done."
+			if $BB [ ! -h $d ]; then
+				$BB echo -n "moving cache for $package to sdcard ... "
+				$BB echo $d >> /mnt/sdcard/data_cache/cache.list
+				$BB mkdir -p /mnt/sdcard/data_cache/$package/cache
+				$BB rm -R $d
+				$BB ln -s /mnt/sdcard/data_cache/$package/cache $d
+				$BB echo "done."
+			else
+				$BB echo "Skipping $package ... (cache is already symlinked)"
+			fi
 		done
 	}
 	
@@ -878,7 +927,7 @@ _cache()
 			cacheMenu
 		;;
 		-rmall|remove_all)
-			clearCache "/data/data /mnt/sdcard"
+			clearCache "/mnt/sdcard /data/data"
 		;;
 		-rmsd|remove_sdcard)
 			clearCache "/mnt/sdcard"
@@ -901,28 +950,14 @@ _cache()
 		-mvstreet|move_streetview)
 			/data/data/com.google.android.street 
 		;;
-		-mvmarket|move_market)
+		-mvvend|move_vending)
 			/data/data/com.android.vending
 		;;
 		-mvgmail|move_gmail)
 			/data/data/com.google.android.gm/cache
 		;;
 		*)
-			$BB echo "usage: cache [-rmall|-rmsd|-rmdata|-mvsd|-mvdata|-mvbrow|"
-			$BB echo "              -mvmaps|-mvstreet|-mvvend|-mvgmail]"
-			$BB echo ""
-			$BB echo "options:"
-			$BB echo "    --menu       Prints menu with options"
-			$BB echo "    -rmall       Clear out all cache in /data & /sdcard"
-			$BB echo "    -rmsd        Clear out all cache in /sdcard"
-			$BB echo "    -rmdata      Clear out all cache in /data"
-			$BB echo "    -mvsd        Move cache from /data to /sdcard"
-			$BB echo "    -mvdata      Move cache from /sdcard to /data"
-			$BB echo "    -mvbrow      Move browser cache to sdcard"
-			$BB echo "    -mvmaps      Move Maps cache to sdcard"
-			$BB echo "    -mvstreet    Move Street View cache to sdcard"
-			$BB echo "    -mvvend      Move Market cache to sdcard"
-			$BB echo "    -mvgmail     Move Gmail cache to sdcard"
+			_cacheUsage
 		;;
 	esac
 }
@@ -1069,7 +1104,8 @@ _chglog()
 		_chglogUsage
 	fi
 	
-	if $BB [ -z `$BB find /system/etc -type f | $BB grep -i changelog` ]; then	# /system/etc is the most common place.
+	# Check /system/etc for changelog since that seems to be the most common place
+	if $BB [ -z `$BB find /system/etc -type f | $BB grep -i changelog` ]; then
 		$BB echo "Error: changelog not found."
 	else
 		$BB find /system/etc -type f | $BB cat `$BB grep -i changelog`
@@ -1110,6 +1146,7 @@ _eri()
 		$BB echo ""
 		$BB echo "Changes the \"Verizon Wireless\" in the"
 		$BB echo "pulldown bar to your own custom text."
+		return
 	fi
 	
 	$BB echo ""
@@ -1117,18 +1154,19 @@ _eri()
 	$BB echo "Welcome to eri text changer by JRummy16! This will attempt to change"
 	$BB echo "the text in your pulldown bar that usually says \"Verizon Wireless\""
 	$BB echo "Note: The text MUST be 16 characters or less."
+	$BB echo "====================================================================="
 	$BB echo
 	$BB echo -n "Please type what you would like the pull down bar to say: "
 	read eriText
-
+	
 	characterCount=`$BB echo $eriText | $BB wc -L`
-
+	
 	if $BB [ $characterCount -gt 16 ]; then
 		$BB echo "Error: You cannot set the text to more than 16 characters."
 		$BB echo "Please try again."
 		return
 	fi
-
+	
 	# Make sure what we are changing is exactly 16 characters long:
 	case $characterCount in
 		1)	NEW_ERI="$eriText               "	;;
@@ -1150,7 +1188,7 @@ _eri()
 		*)	$BB echo "Error changing eri text!"
 			return								;;
 	esac
-
+	
 	$BB echo -n "Getting neccessary files ... "
 	if $BB [ ! -e /system/bin/zip -a ! -e /system/xbin/zip ]; then
 		$BB wget -q http://froyoroms.com/files/developers/jrummy/JRummy/droidbox/zip -O /system/xbin/zip
@@ -1164,22 +1202,34 @@ _eri()
 		$BB cp -f /system/framework/framework-res.apk /data/local/framework.zip
 		$BB unzip -q /data/local/framework.zip -d /data/local/tmp >/dev/null 2>&1
 		$BB rm -f /data/local/framework.zip
-		if $BB [ ! -z "`$BB grep -i "verizon wireless" /data/local/tmp/res/xml/eri.xml`" ]; then
-			# first time change. Making a backup for later changes:
-			$BB cp /data/local/tmp/res/xml/eri.xml /system/etc/backup_eri.xml
+		
+		# Last resort, download the file:
+		# I'm doing this because some unzip commands seem to be borked in some versions of busybox
+		if $BB [ ! -e /data/local/tmp/res/xml/eri.xml ]; then
+			$BB mkdir -p /data/local/tmp/res/xml/eri.xml
+			$BB wget -q http://froyoroms.com/files/developers/jrummy/JRummy/droidbox/eri.xml -O /data/local/tmp/res/xml/eri.xml
 		fi
 	fi
 	$BB echo "done."
-
-	# I'm doing this because some unzip commands seem to be borked in some versions of busybox
-	if $BB [ -e /data/local/tmp/res/xml/eri.xml ]; then
-		$BB wget -q http://froyoroms.com/files/developers/jrummy/JRummy/droidbox/eri.xml -O /data/local/tmp/res/xml/eri.xml
-	fi
-	if $BB [ -z "`$BB grep -i "verizon wireless" /data/local/tmp/res/xml/eri.xml`" ]; then
-		$BB echo "Error: Verizon Wireless not found. Could not change text."
+	
+	# Having trouble getting eri.xml even with all that ^^ :O
+	# So, lets check if the file is there:
+	if $BB [ ! -e /data/local/tmp/res/xml/eri.xml ]; then
+		$BB echo "Error: Failed to get eri.xml. Exiting ... "
 		return
 	fi
-
+	if $BB [ ! -z "`$BB grep -i "verizon wireless" /data/local/tmp/res/xml/eri.xml`" ]; then
+		# first time change. Making a backup for later changes:
+		$BB cp /data/local/tmp/res/xml/eri.xml /system/etc/backup_eri.xml
+	fi
+	if $BB [ -z "`$BB grep -i "verizon wireless" /data/local/tmp/res/xml/eri.xml`" ]; then
+		$BB echo "Error: Verizon Wireless not found in eri.xml. Could not change text."
+		$BB echo "Make sure you have a file in /system/etc named backup_eri.xml or your"
+		$BB echo "current pulldown bar text says \"Verizon Wireless\""
+		return
+	fi
+	
+	$BB echo ""
 	$BB echo -n "Setting pulldown text to $eriText ... "
 	$BB sed -i "s|Verizon Wireless|$NEW_ERI|" /data/local/tmp/res/xml/eri.xml
 	cd /data/local/tmp
@@ -1187,17 +1237,8 @@ _eri()
 	cd /
 	$BB rm -R /data/local/tmp
 	$BB echo "done."
-
-	$BB echo "To see the change you must reboot your device."
-	$BB echo -n "Would you like to reboot now? (y/n): "
-	read rebootChoice
-	case $rebootChoice in
-		y|Y)
-			$BB echo "see you soon ... "
-			toolbox reboot
-		;;
-		*)	;;
-	esac
+	
+	promptToReboot changes
 }
 
 _exe()
@@ -1224,7 +1265,8 @@ _exe()
 	elif $BB [ -e $1 ]; then
 		$BB chmod 0755 $1
 		$BB echo "$1 is now executable."
-	elif $BB [ ! -z "`$BB find /system /data /mnt/sdcard -iname $1 -type f`" ]; then	# make all files which match the given name executable.
+	# make all files which match the given name executable.
+	elif $BB [ ! -z "`$BB find /system /data /mnt/sdcard -iname $1 -type f`" ]; then
 		$BB find /system /data /mnt/sdcard -type f -iname $1 -print | while read f
 		do
 			$BB chmod 0755 $f
@@ -1903,9 +1945,11 @@ _install_zip()
 	
 	case $1 in
 		-m|--menu)
+			checkDevice sholes return
 			ghettoRomManager $UPDATE_PACKAGE_LIST
 		;;
 		-k|--kernels)
+			checkDevice sholes return
 			ghettoRomManager $KERNEL_PACKAGE_LIST
 		;;
 		*)
@@ -2774,6 +2818,41 @@ _rstapps()
 		fi
 	}
 	
+	restoreBootAni()
+	{
+		$BB mkdir -p $BACKUP_DIR/BootAniBackup
+		if $BB [ -z "`find $BACKUP_DIR/BootAniBackup -name *.zip`" ]; then
+			$BB echo "Error: No boot animaion found for restore."
+		fi
+		
+		if $BB [ -e $BACKUP_DIR/BootAniBackup/data_local_bootani.zip ]; then
+			$BB echo -n "Restoring /data/local boot animation ... "
+			$BB cp -f $BACKUP_DIR/BootAniBackup/data_local_bootani.zip /data/local/bootanimation.zip
+			$BB echo "done."
+		fi
+		if $BB [ -e $BACKUP_DIR/BootAniBackup/system_media_bootani.zip ]; then
+			$BB echo -n "Restoring /system/media boot animation ... "
+			$BB cp -f $BACKUP_DIR/BootAniBackup/system_media_bootani.zip /system/media/bootanimation.zip
+			$BB echo "done."
+		fi	
+	}
+	
+	restoreFonts()
+	{
+		$BB mkdir -p $BACKUP_DIR/SystemFonts
+		if $BB [ `$BB ls $BACKUP_DIR/SystemFonts | $BB grep ttf | $BB wc -l` -eq 0 ]; then
+			$BB echo "Error: no fonts found for restore."
+			return
+		else
+			$BB echo -n "Restoring fonts ... "
+			for ttf in $BACKUP_DIR/SystemFonts/*.ttf
+			do
+				$BB cp -f $ttf /system/fonts
+			done
+			$BB echo "done."
+		fi
+	}
+	
 	rebootDevice()
 	{
 		$BB echo ""
@@ -2878,6 +2957,9 @@ _rstapps()
 				$BB sleep 2
 				rebootDevice
 			;;
+			-b|--bootani)
+				restoreBootAni
+			;;
 			-c|--complete)
 				checkSd
 				restoreApps
@@ -2889,6 +2971,9 @@ _rstapps()
 				acssiBanner
 				$BB sleep 2
 				rebootDevice
+			;;
+			-f|--fonts)
+				restoreFonts
 			;;
 			-nd|--no_data)
 				checkSd
@@ -3240,19 +3325,24 @@ _setprops()
 			$BB echo "No change was made."
 		fi
 	}
-
+	
 	vmHeap()
 	{
 		case $heapSizeChoice in
 			1|12m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 12m			;;
-			14m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 14m			;;
-			2|16m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 16m			;;
-			20m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 20m			;;
-			3|24m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 24m			;;
-			30m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 30m			;;
-			4|32m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 32m			;;
-			36m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 36m			;;
-			5)																				;;
+			2|14m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 14m			;;
+			3|16m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 16m			;;
+			4|18m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 18m			;;
+			5|20m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 20m			;;
+			6|22m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 22m			;;
+			7|24m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 24m			;;
+			8|26m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 26m			;;
+			9|28m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 28m			;;
+			10|30m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 30m			;;
+			11|32m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 32m			;;
+			12|34m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 34m			;;
+			13|36m)	changePropValue /system/build.prop "dalvik.vm.heapsize=" 36m			;;
+			9)																				;;
 			*)		$BB echo "Error: Invalid option in $heapSizeChoice"						;;
 		esac
 	}
@@ -3278,7 +3368,7 @@ _setprops()
 			2|2000)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 2000	;;
 			3|1500)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 1500	;;
 			4|1000)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 1000	;;
-			5|750)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 750		;;
+			5|750)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 750	;;
 			6|3000)	changePropValue /system/build.prop "ro.telephony.call_ring.delay=" 3000	;;
 			7)																;;
 			*)	$BB echo "Error: Invalid option in $ringDelayChoice"		;;
@@ -3326,7 +3416,6 @@ _setprops()
 		esac
 	}
 
-
 	bootSound()
 	{
 		case $bootSoundChoice in
@@ -3346,11 +3435,22 @@ _setprops()
 			6|scanon)		changePropValue /system/build.prop "media.stagefright.enable-scan=" true		;;
 			3|metaoff)		changePropValue /system/build.prop "media.stagefright.enable-meta=" false		;;
 			4|metaon)		changePropValue /system/build.prop "media.stagefright.enable-meta=" true		;;
-			1|playeroff)	changePropValue /system/build.prop "media.stagefright.enable-player=" false	;;
+			1|playeroff)	changePropValue /system/build.prop "media.stagefright.enable-player=" false		;;
 			2|playeron)		changePropValue /system/build.prop "media.stagefright.enable-player=" true		;;
+			*)				$BB echo "Error: Invalid option in $stageFrightChoice"							;;
 		esac
 	}
-
+	
+	roSecure()
+	{
+		$BB mount -o remount,rw -t yaffs2 `$BB grep " /system " "/proc/mounts" | $BB cut -d ' ' -f1` / > /dev/nul 2>&1
+		case $roSecureChoice in
+			1|on)	changePropValue default.prop "ro.secure=" 0				;;
+			2|off)	changePropValue default.prop "ro.secure=" 1				;;
+			*)		$BB echo "Error: Invalid option in $roSecureChoice"		;;
+		esac
+	}
+	
 	case $1 in
 		""|-m|--menu)
 			EXIT_SETPROPS=0
@@ -3363,7 +3463,8 @@ _setprops()
 			$BB echo " 6  Black screen phone delay"
 			$BB echo " 7  Stage Fright Control"
 			$BB echo " 8  Boot sound"
-			$BB echo " 9  Exit this menu"
+			$BB echo " 9  Enable/Disable adb privileges"
+			$BB echo " 10 Exit this menu"
 			$BB echo "==================================="
 			$BB echo -n "Please choose a number: "
 			read setPropChoice
@@ -3371,11 +3472,20 @@ _setprops()
 				1) 
 					$BB echo "==================================="
 					$BB echo " Your current VM Heap Size is: `getprop dalvik.vm.heapsize`"
-					$BB echo " 1  Set VM Heap Size to 12m"
-					$BB echo " 2  Set VM Heap Size to 16m"
-					$BB echo " 3  Set VM Heap Size to 24m (defualt)"
-					$BB echo " 4  Set VM Heap Size to 32m"
-					$BB echo " 5  Exit this menu"
+					$BB echo " 1   Set VM Heap Size to 12m"
+					$BB echo " 2   Set VM Heap Size to 14m"
+					$BB echo " 3   Set VM Heap Size to 16m"
+					$BB echo " 4   Set VM Heap Size to 18m"
+					$BB echo " 5   Set VM Heap Size to 20m"
+					$BB echo " 6   Set VM Heap Size to 22m"
+					$BB echo " 7   Set VM Heap Size to 24m"
+					$BB echo " 8   Set VM Heap Size to 26m"
+					$BB echo " 9   Set VM Heap Size to 28m"
+					$BB echo " 10  Set VM Heap Size to 30m"
+					$BB echo " 11  Set VM Heap Size to 32m"
+					$BB echo " 12  Set VM Heap Size to 34m"
+					$BB echo " 13  Set VM Heap Size to 36m"
+					$BB echo " 14  Exit this menu"
 					$BB echo "==================================="
 					$BB echo -n "Please choose a number: "
 					read heapSizeChoice
@@ -3398,6 +3508,7 @@ _setprops()
 				;;
 				3) 
 					$BB echo "==============================="
+					$BB echo " Your current ring delay is set to: `getprop ro.telephony.call_ring.delay`"
 					$BB echo " 1  Reduce ring delay by 1/4"
 					$BB echo " 2  Reduce ring delay by 1/3"
 					$BB echo " 3  Reduce ring delay in half"
@@ -3479,6 +3590,15 @@ _setprops()
 					bootSound
 				;;
 				9)
+					$BB echo "================================"
+					$BB echo " 1  Enable full adb privileges"
+					$BB echo " 2  Disable adb privileges"
+					$BB echo "================================"
+					$BB echo -n "Please choose a number: "
+					read roSecureChoice
+					roSecure
+				;;
+				10)
 					EXIT_SETPROPS=1
 				;;
 				*)
@@ -3521,6 +3641,10 @@ _setprops()
 		stagefright)
 			stageFrightChoice=$2
 			stageFright
+		;;
+		rosecure)
+			roSecureChoice=$2
+			roSecure
 		;;
 		getprops)
 			GETPROP_VALUE=$($BB cat $2 | $BB grep -i $3 | $BB sed "s|$3||")
@@ -4239,4 +4363,3 @@ if $BB [ -e /system/etc/droidbox/.com.jrummy.droidbox ]; then
 fi
 
 _sysro > /dev/null
-
